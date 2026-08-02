@@ -31,7 +31,10 @@ function FormattedMarkdown({ content }: { content: string }) {
       {lines.map((line, idx) => {
         if (!line.trim()) return <div key={idx} className="h-1" />
 
-        const parts = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
+        const isBulletLine = /^[-*]\s+/.test(line.trim())
+        const bulletContent = isBulletLine ? line.trim().replace(/^[-*]\s+/, '') : line
+
+        const parts = bulletContent.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
         const parsedLine = parts.map((part, pIdx) => {
           if (part.startsWith('**') && part.endsWith('**')) {
             return (
@@ -72,7 +75,7 @@ function FormattedMarkdown({ content }: { content: string }) {
           )
         }
 
-        if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+        if (isBulletLine) {
           return (
             <div key={idx} className="flex gap-2 items-start pl-1">
               <span className="text-emerald-500 font-bold select-none">•</span>
