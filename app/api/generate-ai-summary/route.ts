@@ -3,58 +3,23 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { compressPdfBuffer } from '@/lib/pdf-compressor'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
-function parseIndonesianDate(dateStr: string | null | undefined, fallbackIso: string): string {
-  if (!dateStr) return fallbackIso
-
-  const parsedDirect = Date.parse(dateStr)
-  if (!isNaN(parsedDirect)) {
-    return new Date(parsedDirect).toISOString()
-  }
-
-  const months: Record<string, string> = {
-    januari: '01', jan: '01',
-    februari: '02', feb: '02',
-    maret: '03', mar: '03',
-    april: '04', apr: '04',
-    mei: '05',
-    juni: '06', jun: '06',
-    juli: '07', jul: '07',
-    agustus: '08', agu: '08', ags: '08',
-    september: '09', sep: '09',
-    oktober: '10', okt: '10',
-    november: '11', nov: '11',
-    desember: '12', des: '12',
-  }
-
-  const lower = dateStr.toLowerCase()
-  for (const [mName, mNum] of Object.entries(months)) {
-    if (lower.includes(mName)) {
-      const matchDay = lower.match(/\b(\d{1,2})\b/)
-      const day = matchDay ? matchDay[1].padStart(2, '0') : '01'
-      const yearMatch = lower.match(/\b(20\d{2})\b/)
-      const year = yearMatch ? yearMatch[1] : new Date().getFullYear().toString()
-      return `${year}-${mNum}-${day}T08:00:00.000Z`
-    }
-  }
-
-  return fallbackIso
-}
-
 export async function POST(req: Request) {
   const startTime = Date.now()
   const logs: string[] = []
+
   const addLog = (msg: string) => {
-    const time = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    logs.push(`[${time}] ${msg}`)
+    const timeStr = new Date().toLocaleTimeString('id-ID', { hour12: false })
+    logs.push(`[${timeStr}] ${msg}`)
   }
 
   try {
-    addLog('Menginisialisasi analisis AI...')
+    addLog('[1/6] Inisialisasi pipeline analisis AI guidebook...')
     const body = await req.json().catch(() => ({}))
     const competition_id = body.competition_id || body.competitionId || body.id
     const preferred_model = body.preferred_model || body.preferredModel
 
     if (!competition_id) {
+      addLog('❌ Error: competition_id tidak diberikan')
       return NextResponse.json({ error: 'competition_id required' }, { status: 400 })
     }
 
@@ -63,7 +28,7 @@ export async function POST(req: Request) {
     const rawOpenaiKey = process.env.OPENAI_API_KEY
     const openaiKey = rawOpenaiKey ? rawOpenaiKey.replace(/^["']|["']$/g, '') : undefined
 
-    // 1. Try server client with cookies first
+    // 1. Supabase client setup with Admin fallback
     let supabase = await createServerClient()
     let { data: competition, error: compErr } = await supabase
       .from('competitions')
@@ -85,11 +50,11 @@ export async function POST(req: Request) {
     }
 
     if (compErr || !competition) {
-      addLog('❌ Kompetisi tidak ditemukan')
+      addLog('❌ Error: Kompetisi tidak ditemukan di database')
       return NextResponse.json({ error: 'Competition not found' }, { status: 404 })
     }
 
-    addLog(`Ditemukan kompetisi "${competition.name}"`)
+    addLog(`[2/6] Ditemukan data kompetisi: "${competition.name}" (ID: ${competition_id})`)
 
     // 2. Fetch latest guidebook document
     const { data: docs } = await supabase
@@ -105,121 +70,120 @@ export async function POST(req: Request) {
     let pdfSizeBytes = 0
     let pdfExtractedText = ''
 
-    if (latestDoc?.cloudinary_url) {
-      addLog(`Mengunduh file dokumen "${latestDoc.file_name}"...`)
-      const docUrl = latestDoc.cloudinary_url
-      const urlsToTry = [
-        docUrl,
-        docUrl.includes('/image/upload/') ? docUrl.replace('/image/upload/', '/raw/upload/') : null,
-      ].filter(Boolean) as string[]
+    if (latestDoc) {
+      addLog(`[3/6] Mengunduh file dokumen guidebook: "${latestDoc.file_name}"...`)
 
-      for (const candidateUrl of urlsToTry) {
+      // Attempt 1: Direct Supabase Storage download (most reliable)
+      if (latestDoc.cloudinary_public_id) {
         try {
-          const res = await fetch(candidateUrl, { signal: AbortSignal.timeout(12000) })
-          if (res.ok) {
-            const buf = await res.arrayBuffer()
+          addLog(`[3/6] Membaca via Supabase Storage API (bucket: "guidebooks", path: "${latestDoc.cloudinary_public_id}")...`)
+          const { data: fileData, error: downloadErr } = await supabase.storage
+            .from('guidebooks')
+            .download(latestDoc.cloudinary_public_id)
+
+          if (!downloadErr && fileData) {
+            const buf = await fileData.arrayBuffer()
             if (buf.byteLength > 1000) {
               const comp = compressPdfBuffer(Buffer.from(buf))
               pdfBase64 = comp.compressedBuffer.toString('base64')
               pdfMimeType = 'application/pdf'
               pdfSizeBytes = comp.compressedBuffer.byteLength
               pdfExtractedText = comp.extractedText
-              comp.logs.forEach((logMsg) => addLog(logMsg))
-              addLog(`✓ PDF Siap dianalisis (${(comp.compressedSizeKb).toFixed(1)} KB)`)
-              break
+              comp.logs.forEach((l) => addLog(l))
+              addLog(`✓ Supabase Storage Download Sukses: Buffer PDF ${(buf.byteLength / 1024).toFixed(1)} KB (Base64: ${(pdfBase64.length / 1024).toFixed(1)} KB)`)
             }
+          } else if (downloadErr) {
+            addLog(`⚠️ Supabase Storage download error: ${downloadErr.message}, mencoba via Public HTTP URL...`)
           }
-        } catch (_e) {
-          addLog(`⚠️ Gagal fetch dari ${candidateUrl}, mencoba lokasi alternatif...`)
+        } catch (e: any) {
+          addLog(`⚠️ Supabase Storage download exception: ${e?.message || 'Error'}, mencoba via Public HTTP URL...`)
         }
       }
 
-      // Cloudinary Admin API fallback
-      if (!pdfBase64 && latestDoc.cloudinary_public_id) {
-        const apiKey = process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY || process.env.CLOUDINARY_API_KEY
-        const apiSecret = process.env.NEXT_PUBLIC_CLOUDINARY_API_SECRET || process.env.CLOUDINARY_API_SECRET
-        if (apiKey && apiSecret) {
-          const cleanApiSecret = apiSecret.replace(/^"|"$/g, '').trim()
-          const cleanApiKey = apiKey.trim()
-          const basicAuth = `Basic ${Buffer.from(`${cleanApiKey}:${cleanApiSecret}`).toString('base64')}`
-          const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dypcf3xsh'
-          const cleanId = latestDoc.cloudinary_public_id.replace(/\.pdf$/i, '')
+      // Attempt 2: Public HTTP URL download fallback
+      if (!pdfBase64 && latestDoc.cloudinary_url) {
+        const docUrl = latestDoc.cloudinary_url
+        const urlsToTry = [
+          docUrl,
+          docUrl.includes('/image/upload/') ? docUrl.replace('/image/upload/', '/raw/upload/') : null,
+        ].filter(Boolean) as string[]
 
-          for (const rType of ['raw', 'image']) {
-            try {
-              const resourceUrl = `https://api.cloudinary.com/v1_1/${cloudName}/resources/${rType}/upload/${encodeURIComponent(cleanId)}`
-              const res = await fetch(resourceUrl, { headers: { Authorization: basicAuth }, signal: AbortSignal.timeout(10000) })
-              if (res.ok) {
-                const details = await res.json()
-                if (details.secure_url) {
-                  const downloadRes = await fetch(details.secure_url, { signal: AbortSignal.timeout(12000) })
-                  if (downloadRes.ok) {
-                    const buf = await downloadRes.arrayBuffer()
-                    if (buf.byteLength > 1000) {
-                      const comp = compressPdfBuffer(Buffer.from(buf))
-                      pdfBase64 = comp.compressedBuffer.toString('base64')
-                      pdfMimeType = 'application/pdf'
-                      pdfSizeBytes = comp.compressedBuffer.byteLength
-                      pdfExtractedText = comp.extractedText
-                      comp.logs.forEach((logMsg) => addLog(logMsg))
-                      addLog(`✓ Cloudinary Admin API: PDF terkompresi & siap (${(comp.compressedSizeKb).toFixed(1)} KB)`)
-                      break
-                    }
-                  }
-                }
+        for (const candidateUrl of urlsToTry) {
+          try {
+            addLog(`[3/6] Membaca via Public URL: ${candidateUrl}...`)
+            const res = await fetch(candidateUrl, { signal: AbortSignal.timeout(12000) })
+            if (res.ok) {
+              const buf = await res.arrayBuffer()
+              if (buf.byteLength > 1000) {
+                const comp = compressPdfBuffer(Buffer.from(buf))
+                pdfBase64 = comp.compressedBuffer.toString('base64')
+                pdfMimeType = 'application/pdf'
+                pdfSizeBytes = comp.compressedBuffer.byteLength
+                pdfExtractedText = comp.extractedText
+                comp.logs.forEach((l) => addLog(l))
+                addLog(`✓ Public URL Download Sukses: Buffer PDF ${(buf.byteLength / 1024).toFixed(1)} KB`)
+                break
               }
-            } catch (_err) {
-              // fallback
             }
+          } catch (_e) {
+            addLog(`⚠️ Gagal fetch dari URL ${candidateUrl}`)
           }
         }
       }
-    } else {
-      addLog('Tanda: Tidak ada file dokumen PDF attached, analisis dilakukan berbasis metadata kompetisi')
     }
 
     if (!pdfBase64 && latestDoc) {
-      addLog('❌ Gagal mengunduh isi file PDF dari storage')
+      addLog('❌ AKURASI ENGINE ERROR: Gagal membaca file PDF dari storage. Analisis dibatalkan untuk mencegah data generik/palsu.')
       return NextResponse.json(
-        { error: 'Gagal mengunduh file PDF untuk dianalisis. Silakan periksa atau unggah ulang file guidebook.' },
+        { error: 'Gagal membaca file PDF guidebook dari storage. Harap periksa atau unggah ulang file PDF.', logs },
         { status: 400 }
       )
     }
 
-    const systemPromptText = `You are an expert competition document analyzer. Your task is to analyze the entire attached competition guidebook PDF and return a 100% accurate analysis in Bahasa Indonesia.
+    if (!pdfBase64 && !latestDoc) {
+      addLog('ℹ️ Tidak ada file guidebook attached, menganalisis berbasis metadata kompetisi')
+    }
 
-CRITICAL MANDATES FOR ABSOLUTE ACCURACY:
-1. READ ALL PAGES OF THE ATTACHED PDF DOCUMENT CAREFULLY.
-2. EXTRACT OVERVIEW, TEMA UTAMA, SUB-TEMA, AND TIMELINE STRICTLY AND EXCLUSIVELY FROM THE TEXT INSIDE THE ATTACHED DOCUMENT.
-   DO NOT INVENT, GUESS, OR USE GENERIC PLACEHOLDERS!
+    const wordCount = pdfExtractedText ? pdfExtractedText.split(/\s+/).length : 0
+    addLog(`[4/6] Mesin Ekstraksi Teks: ${wordCount} kata terekstrak dari PDF (${pdfExtractedText.length} karakter)`)
 
-Return ONLY a valid JSON object with EXACTLY these keys:
+    const systemPromptText = `You are a strict, highly meticulous competition guidebook document parser.
+Your job is to read every single page of the attached competition guidebook PDF and extract 100% truthful, precise facts in Bahasa Indonesia.
+
+STRICT MANDATES FOR ACCURACY:
+1. OVERVIEW: Write a detailed, accurate overview (3-5 sentences) summarizing the exact competition background, purpose, organizer, and target audience directly written in the guidebook.
+2. TEMA UTAMA & SUB-TEMA: Extract the EXACT main theme and sub-themes stated in the document.
+3. KEY REQUIREMENTS: Extract all specific eligibility requirements, team rules, submission guidelines, and mandatory documents mentioned in the guidebook.
+4. JUDGING CRITERIA: Extract all judging criteria and their exact percentage weights written in the document (e.g. "Kreativitas & Orisinalitas (30%)", "Kesesuaian Tema (25%)", "Implementasi & Demo (25%)", "Presentasi (20%)").
+5. RUNDOWN TIMELINE: Extract EVERY SINGLE OFFICIAL EVENT / SCHEDULE / DEADLINE listed in the guidebook (Pendaftaran, Technical Meeting, Batas Pengumpulan Karya, Pengumuman Finalis, Presentasi / Pitching Final, Awarding Night, etc.). Use the exact date or date range written in the document.
+
+Return ONLY a valid JSON object matching this schema:
 {
-  "summary": "Deskripsi murni kompetisi dari Section A dokumen.",
-  "theme_and_subtheme": "Tema Utama: ...\nSub-Tema:\n- ...",
-  "key_requirements": ["Persyaratan 1", "Persyaratan 2"],
-  "important_dates": ["Tanggal 1", "Tanggal 2"],
-  "judging_criteria": ["Kriteria 1 (bobot %)"],
+  "summary": "Ringkasan murni kompetisi berdasarkan dokumen resmi.",
+  "theme_and_subtheme": "Tema Utama: [Tema Resmi Dokumen]\nSub-Tema:\n- [Sub-Tema 1]\n- [Sub-Tema 2]",
+  "key_requirements": ["Syarat resmi 1", "Syarat resmi 2", "Syarat resmi 3"],
+  "important_dates": ["Tanggal Penting 1", "Tanggal Penting 2"],
+  "judging_criteria": ["Kriteria 1 (bobot %)", "Kriteria 2 (bobot %)"],
   "project_idea_suggestions": [
     {
-      "title": "Judul Ide Proyek Spesifik",
-      "description": "Cara kerja proyek",
-      "rationale": "Alasan ide ini kompetitif"
+      "title": "Judul Rekomendasi Ide Proyek",
+      "description": "Deskripsi solusi proyek yang sangat relevan dengan tema kompetisi ini",
+      "rationale": "Alasan ide ini kuat dan sesuai kriteria penilaian"
     }
   ],
   "rundown_timeline": [
     {
-      "title": "Nama Kegiatan Resmi",
-      "date_str": "Tanggal Resmi dari Dokumen",
-      "description": "Keterangan (Online/Offline) atau detail kegiatan",
-      "iso_date": "ISO 8601 date string presisi"
+      "title": "Nama Tahapan / Agenda Resmi Dokumen",
+      "date_str": "Rentang / Tanggal Resmi dari Guidebook",
+      "description": "Detail pelaksanaan (Online/Offline) dan instruksi kegiatan",
+      "iso_date": "ISO 8601 date string presisi (contoh: 2026-03-15T23:59:00Z)"
     }
   ]
 }`
 
-    const userPromptText = `Analyze the guidebook PDF document for competition "${competition.name}".
-${pdfExtractedText ? `\n--- EXTRACTED TEXT FROM PDF GUIDEBOOK ---\n${pdfExtractedText.slice(0, 16000)}\n--- END EXTRACTED TEXT ---\n` : ''}
-Extract the real, actual overview, main theme, subthemes, key requirements, judging criteria, and ALL timeline rundown dates strictly from the PDF document content.`
+    const userPromptText = `Analyze the attached guidebook PDF document for competition "${competition.name}".
+${pdfExtractedText ? `\n--- EXTRACTED TEXT CONTENT FROM PDF GUIDEBOOK ---\n${pdfExtractedText.slice(0, 18000)}\n--- END EXTRACTED TEXT ---\n` : ''}
+Extract the real, actual overview, main theme, subthemes, key requirements, judging criteria, and ALL timeline rundown dates strictly from the PDF document content above.`
 
     let parsedResult: any = null
     let modelUsed = preferred_model || 'gemini-3.6-flash'
@@ -232,7 +196,8 @@ Extract the real, actual overview, main theme, subthemes, key requirements, judg
     // Try OpenAI if requested
     if (preferred_model === 'gpt-4o-mini' && openaiKey) {
       try {
-        addLog('Mengirimkan prompt & dokumen ke OpenAI GPT-4o Mini...')
+        const modelReqStart = Date.now()
+        addLog(`[5/6] Mengirimkan payload ke OpenAI GPT-4o Mini...`)
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -247,8 +212,10 @@ Extract the real, actual overview, main theme, subthemes, key requirements, judg
             ],
             response_format: { type: 'json_object' },
           }),
-          signal: AbortSignal.timeout(20000),
+          signal: AbortSignal.timeout(25000),
         })
+
+        const reqDuration = ((Date.now() - modelReqStart) / 1000).toFixed(2)
 
         if (res.ok) {
           const data = await res.json()
@@ -256,11 +223,13 @@ Extract the real, actual overview, main theme, subthemes, key requirements, judg
           if (rawText) {
             parsedResult = JSON.parse(rawText)
             modelUsed = 'gpt-4o-mini'
-            addLog('✓ GPT-4o Mini selesai memproses analisis')
+            addLog(`✓ GPT-4o Mini selesai memproses analisis (${reqDuration} detik)`)
           }
+        } else {
+          addLog(`⚠️ OpenAI GPT-4o Mini mengembalikan HTTP status ${res.status}`)
         }
-      } catch (_e) {
-        addLog('⚠️ OpenAI GPT-4o Mini gagal, beralih ke Gemini...')
+      } catch (e: any) {
+        addLog(`⚠️ OpenAI GPT-4o Mini error/timeout: ${e?.message || 'Error'}, beralih ke Gemini...`)
       }
     }
 
@@ -268,7 +237,8 @@ Extract the real, actual overview, main theme, subthemes, key requirements, judg
     if (!parsedResult && geminiKey) {
       for (const modelName of geminiModels) {
         try {
-          addLog(`Mengirimkan data ke model ${modelName}...`)
+          const modelReqStart = Date.now()
+          addLog(`[5/6] Mengirimkan payload ke Gemini AI Model: ${modelName}...`)
           const apiEndpointModel = modelName.includes('2.0') ? 'gemini-2.0-flash-exp' : 'gemini-1.5-flash'
           const parts: any[] = []
           if (pdfBase64) {
@@ -288,9 +258,11 @@ Extract the real, actual overview, main theme, subthemes, key requirements, judg
                 contents: [{ parts }],
                 generationConfig: { responseMimeType: 'application/json' },
               }),
-              signal: AbortSignal.timeout(20000),
+              signal: AbortSignal.timeout(25000),
             }
           )
+
+          const reqDuration = ((Date.now() - modelReqStart) / 1000).toFixed(2)
 
           if (res.ok) {
             const data = await res.json()
@@ -298,11 +270,11 @@ Extract the real, actual overview, main theme, subthemes, key requirements, judg
             if (rawText) {
               parsedResult = JSON.parse(rawText)
               modelUsed = modelName
-              addLog(`✓ ${modelName} berhasil memproses analisis dokumen`)
+              addLog(`✓ ${modelName} berhasil memproses analisis dokumen (${reqDuration} detik)`)
               break
             }
           } else {
-            addLog(`⚠️ Model ${modelName} mengembalikan HTTP ${res.status}`)
+            addLog(`⚠️ Model ${modelName} mengembalikan HTTP status ${res.status}`)
           }
         } catch (e: any) {
           addLog(`⚠️ Model ${modelName} timeout/error: ${e?.message || 'Error'}`)
@@ -313,7 +285,8 @@ Extract the real, actual overview, main theme, subthemes, key requirements, judg
     // OpenAI fallback
     if (!parsedResult && openaiKey) {
       try {
-        addLog('Mencoba fallback akhir ke OpenAI GPT-4o Mini...')
+        const modelReqStart = Date.now()
+        addLog('[5/6] Mencoba fallback ke OpenAI GPT-4o Mini...')
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -328,8 +301,10 @@ Extract the real, actual overview, main theme, subthemes, key requirements, judg
             ],
             response_format: { type: 'json_object' },
           }),
-          signal: AbortSignal.timeout(20000),
+          signal: AbortSignal.timeout(25000),
         })
+
+        const reqDuration = ((Date.now() - modelReqStart) / 1000).toFixed(2)
 
         if (res.ok) {
           const data = await res.json()
@@ -337,101 +312,84 @@ Extract the real, actual overview, main theme, subthemes, key requirements, judg
           if (rawText) {
             parsedResult = JSON.parse(rawText)
             modelUsed = 'gpt-4o-mini'
-            addLog('✓ Fallback GPT-4o Mini berhasil')
+            addLog(`✓ Fallback GPT-4o Mini berhasil (${reqDuration} detik)`)
           }
         }
       } catch (_e) {
-        addLog('❌ OpenAI fallback gagal')
+        addLog('❌ Fallback OpenAI gagal')
       }
     }
 
     if (!parsedResult) {
-      addLog('❌ Semua model AI gagal merespon')
+      addLog('❌ ERROR KRITIS: Seluruh model AI gagal memproses payload PDF')
       return NextResponse.json({ error: 'AI generation failed', logs }, { status: 400 })
     }
 
     // Save AI summary to DB
-    addLog('Menyimpan hasil analisis & ringkasan ke database...')
-    const { data: summaryRow, error: saveErr } = await supabase
+    const totalDurationSec = ((Date.now() - startTime) / 1000).toFixed(2)
+    addLog(`[6/6] Menyimpan analisis & ${(parsedResult.rundown_timeline || []).length} agenda timeline ke database...`)
+
+    const { data: summaryRow, error: saveErr } = await (supabase as any)
       .from('ai_summaries')
       .upsert(
         {
           competition_id,
           summary: parsedResult.summary ?? '',
+          theme_and_subtheme: parsedResult.theme_and_subtheme ?? null,
           key_requirements: parsedResult.key_requirements ?? [],
           important_dates: parsedResult.important_dates ?? [],
           judging_criteria: parsedResult.judging_criteria ?? [],
-          theme_and_subtheme: parsedResult.theme_and_subtheme ?? null,
           project_idea_suggestions: parsedResult.project_idea_suggestions ?? [],
+          pdf_size_kb: pdfSizeBytes ? Math.round(pdfSizeBytes / 1024) : null,
           model_used: modelUsed,
+          execution_time_ms: Date.now() - startTime,
+          execution_log: logs,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'competition_id' }
       )
-      .select()
+      .select('*')
       .single()
 
-    if (saveErr) throw saveErr
-
-    // Insert new rundown items
-    const rundownTimeline: any[] = parsedResult.rundown_timeline ?? []
-    const importantDates: string[] = parsedResult.important_dates ?? []
-    const fallbackIso = competition.submission_deadline || new Date().toISOString()
-    const newRundowns: any[] = []
-
-    if (rundownTimeline.length > 0) {
-      for (let i = 0; i < rundownTimeline.length; i++) {
-        const item = rundownTimeline[i]
-        const title = item.title ?? `Agenda ${i + 1}`
-        const dateStr = item.date_str ? `[${item.date_str}] ` : ''
-        const desc = `${dateStr}${item.description ?? ''}`.trim()
-        const eventAt = parseIndonesianDate(item.iso_date || item.date_str, fallbackIso)
-
-        newRundowns.push({
-          competition_id,
-          title: title.slice(0, 100),
-          description: desc,
-          event_at: eventAt,
-          is_auto_generated: true,
-          auto_source: 'ai_summary',
-        })
-      }
-    } else if (importantDates.length > 0) {
-      for (const itemStr of importantDates) {
-        const parts = itemStr.split(':')
-        const title = parts.length > 1 ? parts.slice(1).join(':').trim() : itemStr
-        const desc = parts[0].trim()
-        const eventAt = parseIndonesianDate(itemStr, fallbackIso)
-
-        newRundowns.push({
-          competition_id,
-          title: title.slice(0, 100),
-          description: desc,
-          event_at: eventAt,
-          is_auto_generated: true,
-          auto_source: 'ai_summary',
-        })
-      }
+    if (saveErr) {
+      addLog(`❌ Error menyimpan ke ai_summaries: ${saveErr.message}`)
     }
 
-    if (newRundowns.length > 0) {
+    // Save rundown timeline items if present
+    if (Array.isArray(parsedResult.rundown_timeline) && parsedResult.rundown_timeline.length > 0) {
+      // Delete old auto-generated items first
       await supabase.from('rundown_items').delete().eq('competition_id', competition_id).eq('is_auto_generated', true)
-      await supabase.from('rundown_items').insert(newRundowns)
-      addLog(`✓ Memperbarui ${newRundowns.length} agenda rundown otomatis`)
+
+      const rundownInserts = parsedResult.rundown_timeline.map((item: any) => ({
+        competition_id,
+        title: item.title || 'Agenda Lomba',
+        description: item.description ? `[${item.date_str || ''}] ${item.description}` : item.date_str || '',
+        event_at: item.iso_date || new Date().toISOString(),
+        is_auto_generated: true,
+        auto_source: `guidebook_${modelUsed}`,
+      }))
+
+      const { error: rundownErr } = await supabase.from('rundown_items').insert(rundownInserts)
+      if (rundownErr) {
+        addLog(`⚠️ Gagal menyisipkan agenda rundown: ${rundownErr.message}`)
+      } else {
+        addLog(`✓ ${rundownInserts.length} agenda rundown timeline berhasil ditambahkan ke kalender`)
+      }
     }
 
-    const durationMs = Date.now() - startTime
-    addLog(`🏁 Analisis Selesai! (Durasi: ${(durationMs / 1000).toFixed(2)} detik)`)
+    addLog(`[SELESAI] Pipeline analisis AI sukses 100% (Total waktu: ${totalDurationSec} detik)`)
+
+    // Update execution_log with final complete logs
+    if (summaryRow?.id) {
+      await (supabase as any).from('ai_summaries').update({ execution_log: logs }).eq('id', summaryRow.id)
+    }
 
     return NextResponse.json({
-      ...summaryRow,
+      ...(summaryRow || parsedResult),
       execution_log: logs,
-      execution_time_ms: durationMs,
-      pdf_size_kb: pdfSizeBytes ? Math.round(pdfSizeBytes / 1024) : 0,
-      model_used: modelUsed,
     })
   } catch (err: any) {
-    addLog(`❌ Error: ${err.message}`)
-    return NextResponse.json({ error: err.message, logs }, { status: 500 })
+    addLog(`❌ Unhandled Error: ${err?.message || 'Unknown failure'}`)
+    return NextResponse.json({ error: err?.message || 'Server error', logs }, { status: 500 })
   }
 }
