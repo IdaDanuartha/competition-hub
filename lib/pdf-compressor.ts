@@ -4,7 +4,7 @@
  * to ensure PDF guidebooks load fast, remain 100% valid, and extract accurate text for AI.
  */
 
-import { inflateSync, inflateRawSync } from 'zlib'
+import { PDFParse } from 'pdf-parse'
 
 export interface CompressionResult {
   compressedBuffer: Buffer
@@ -16,123 +16,36 @@ export interface CompressionResult {
 }
 
 /**
- * Pull text operators (Tj / TJ / BT..ET) out of one decoded PDF content-stream string.
+ * Extract plain text from a PDF buffer using a real PDF parser (pdf-parse/pdfjs-dist).
+ * Real-world guidebooks (Word/Canva/LaTeX export) embed subset fonts with custom glyph
+ * encodings — text bytes inside Tj/TJ operators are font-specific glyph codes, not literal
+ * characters, and only decode correctly via the font's ToUnicode CMap. A naive regex scan
+ * (even after inflating FlateDecode streams) reads those glyph codes as garbage; pdfjs-dist
+ * does the actual CMap decoding.
  */
-function extractOperatorsFromContentString(pdfContent: string): string[] {
-  const extractedParts: string[] = []
-
-  // 1. Match Tj string operators: (Text Content) Tj
-  const tjRegex = /\(([^()]{2,})\)\s*Tj/g
-  let match
-  while ((match = tjRegex.exec(pdfContent)) !== null) {
-    const txt = match[1].trim()
-    if (txt.length > 1 && !/^\d+$/.test(txt)) {
-      extractedParts.push(txt)
-    }
-  }
-
-  // 2. Match TJ array text operators: [(Text) -10 (Content)] TJ
-  const tjArrayRegex = /\[\s*(?:\([^()]+\)\s*|-?\d+\s*)+\]\s*TJ/g
-  while ((match = tjArrayRegex.exec(pdfContent)) !== null) {
-    const innerTj = /\(([^()]{2,})\)/g
-    let innerMatch
-    while ((innerMatch = innerTj.exec(match[0])) !== null) {
-      const txt = innerMatch[1].trim()
-      if (txt.length > 1 && !/^\d+$/.test(txt)) {
-        extractedParts.push(txt)
-      }
-    }
-  }
-
-  // 3. Extract readable text lines & words from BT...ET blocks
-  const btRegex = /BT([\s\S]*?)ET/g
-  while ((match = btRegex.exec(pdfContent)) !== null) {
-    const textInBlock = match[1].replace(/[^\x20-\x7E\n\r\t]/g, ' ')
-    const cleanWords = textInBlock
-      .split(/\s+/)
-      .filter((w) => w.length > 2 && !/^\d+$/.test(w) && !w.startsWith('/') && !w.startsWith('\\'))
-    if (cleanWords.length > 0) {
-      extractedParts.push(cleanWords.join(' '))
-    }
-  }
-
-  return extractedParts
-}
-
-/**
- * Locate every `stream ... endstream` object in the PDF, and if its dictionary
- * declares /FlateDecode, inflate it so its real text operators become readable.
- * Most real-world PDFs (Word/Canva/LaTeX export) compress content streams with
- * FlateDecode, so scanning the raw compressed bytes for Tj/TJ finds nothing.
- */
-function getDecodedContentStreams(rawBuffer: Buffer): string[] {
-  const pdfContent = rawBuffer.toString('binary')
-  const decoded: string[] = []
-  const streamRegex = /(<<[^]*?>>)\s*stream\r?\n([\s\S]*?)\r?\nendstream/g
-  let m
-  while ((m = streamRegex.exec(pdfContent)) !== null) {
-    const dict = m[1]
-    const bodyStr = m[2]
-    const bodyBuf = Buffer.from(bodyStr, 'binary')
-    const isFlate = /\/Filter\s*(?:\/FlateDecode|\[[^\]]*\/FlateDecode)/.test(dict)
-
-    if (isFlate) {
-      try {
-        decoded.push(inflateSync(bodyBuf).toString('binary'))
-        continue
-      } catch (_e1) {
-        try {
-          decoded.push(inflateRawSync(bodyBuf).toString('binary'))
-          continue
-        } catch (_e2) {
-          // Not valid zlib data (likely binary image/font stream) — skip it.
-          continue
-        }
-      }
-    }
-
-    if (!/\/Filter/.test(dict)) {
-      // Uncompressed stream — may already contain plain Tj/TJ operators.
-      decoded.push(bodyStr)
-    }
-  }
-  return decoded
-}
-
-/**
- * Extract plain text from PDF buffer by parsing text streams, string arrays, and readable ASCII/UTF-8 words.
- */
-export function extractTextFromPdfBuffer(rawBuffer: Buffer): string {
+export async function extractTextFromPdfBuffer(rawBuffer: Buffer): Promise<string> {
+  let parser: PDFParse | null = null
   try {
-    let extractedParts: string[] = []
-
-    // Decompress real content streams first (handles the common FlateDecode case).
-    for (const contentStr of getDecodedContentStreams(rawBuffer)) {
-      extractedParts = extractedParts.concat(extractOperatorsFromContentString(contentStr))
-    }
-
-    // Fallback: also scan the raw buffer directly (handles uncompressed/legacy PDFs).
-    if (extractedParts.length === 0) {
-      extractedParts = extractOperatorsFromContentString(rawBuffer.toString('binary'))
-    }
-
-    // De-duplicate adjacent repetitive words
-    const filteredParts = extractedParts.filter((item, index, self) => self.indexOf(item) === index)
-    const fullText = filteredParts.join(' ').replace(/\s+/g, ' ').trim()
-    return fullText
+    parser = new PDFParse({ data: rawBuffer })
+    const result = await parser.getText()
+    return result.text.replace(/\s+/g, ' ').trim()
   } catch (_e) {
     return ''
+  } finally {
+    if (parser) {
+      await parser.destroy().catch(() => {})
+    }
   }
 }
 
-export function compressPdfBuffer(rawBuffer: Buffer): CompressionResult {
+export async function compressPdfBuffer(rawBuffer: Buffer): Promise<CompressionResult> {
   const originalSizeKb = rawBuffer.byteLength / 1024
   const logs: string[] = []
 
   logs.push(`[PDF Compression Engine] Ukuran awal file PDF: ${originalSizeKb.toFixed(1)} KB (${(originalSizeKb / 1024).toFixed(2)} MB)`)
 
   // Extract text first for accuracy
-  const extractedText = extractTextFromPdfBuffer(rawBuffer)
+  const extractedText = await extractTextFromPdfBuffer(rawBuffer)
   if (extractedText) {
     const wordCount = extractedText.split(/\s+/).length
     logs.push(`[PDF Extraction Engine] ✓ Berhasil mengekstrak ${wordCount} kata (${extractedText.length} karakter) dari stream PDF`)

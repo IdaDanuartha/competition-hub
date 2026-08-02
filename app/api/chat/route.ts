@@ -86,7 +86,7 @@ export async function POST(req: Request) {
           if (res.ok) {
             const buf = await res.arrayBuffer()
             if (buf.byteLength > 1000) {
-              const comp = compressPdfBuffer(Buffer.from(buf))
+              const comp = await compressPdfBuffer(Buffer.from(buf))
               pdfBase64 = comp.compressedBuffer.toString('base64')
               pdfMimeType = 'application/pdf'
               pdfExtractedText = comp.extractedText
@@ -120,7 +120,7 @@ export async function POST(req: Request) {
                   if (downloadRes.ok) {
                     const buf = await downloadRes.arrayBuffer()
                     if (buf.byteLength > 1000) {
-                      const comp = compressPdfBuffer(Buffer.from(buf))
+                      const comp = await compressPdfBuffer(Buffer.from(buf))
                       pdfBase64 = comp.compressedBuffer.toString('base64')
                       pdfMimeType = 'application/pdf'
                       pdfExtractedText = comp.extractedText
@@ -263,6 +263,8 @@ Jawablah pesan terakhir pengguna dengan jelas dan lengkap berdasarkan dokumen da
               modelUsed = modelName
               break
             }
+          } else {
+            console.warn(`[Chat API] Gemini ${apiEndpointModel} returned HTTP ${res.status}`)
           }
         } catch (e) {
           console.warn(`[Chat API] Gemini model ${modelName} failed:`, e)

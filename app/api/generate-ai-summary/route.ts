@@ -130,7 +130,7 @@ export async function POST(req: Request) {
           if (!downloadErr && fileData) {
             const buf = await fileData.arrayBuffer()
             if (buf.byteLength > 1000) {
-              const comp = compressPdfBuffer(Buffer.from(buf))
+              const comp = await compressPdfBuffer(Buffer.from(buf))
               pdfBase64 = comp.compressedBuffer.toString('base64')
               pdfMimeType = 'application/pdf'
               pdfSizeBytes = comp.compressedBuffer.byteLength
@@ -161,7 +161,7 @@ export async function POST(req: Request) {
             if (res.ok) {
               const buf = await res.arrayBuffer()
               if (buf.byteLength > 1000) {
-                const comp = compressPdfBuffer(Buffer.from(buf))
+                const comp = await compressPdfBuffer(Buffer.from(buf))
                 pdfBase64 = comp.compressedBuffer.toString('base64')
                 pdfMimeType = 'application/pdf'
                 pdfSizeBytes = comp.compressedBuffer.byteLength
