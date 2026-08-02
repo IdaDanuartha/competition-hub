@@ -16,7 +16,7 @@ export function RundownList({ items, isLoading }: { items: RundownItem[]; isLoad
   if (isLoading) {
     return (
       <div className="relative ml-4 border-l-2 border-sky-300 py-2 space-y-6 dark:border-sky-800 animate-pulse">
-        <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
+        <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2 pl-6">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span>Generating &amp; updating timeline with AI...</span>
         </div>
