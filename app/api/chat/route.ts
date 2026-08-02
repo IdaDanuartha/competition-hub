@@ -71,6 +71,7 @@ export async function POST(req: Request) {
     const latestDoc = docs?.[0]
     let pdfBase64: string | null = null
     let pdfMimeType = 'application/pdf'
+    let pdfExtractedText = ''
 
     if (latestDoc?.cloudinary_url) {
       const docUrl = latestDoc.cloudinary_url
@@ -88,6 +89,7 @@ export async function POST(req: Request) {
               const comp = compressPdfBuffer(Buffer.from(buf))
               pdfBase64 = comp.compressedBuffer.toString('base64')
               pdfMimeType = 'application/pdf'
+              pdfExtractedText = comp.extractedText
               break
             }
           }
@@ -121,6 +123,7 @@ export async function POST(req: Request) {
                       const comp = compressPdfBuffer(Buffer.from(buf))
                       pdfBase64 = comp.compressedBuffer.toString('base64')
                       pdfMimeType = 'application/pdf'
+                      pdfExtractedText = comp.extractedText
                       break
                     }
                   }
@@ -165,7 +168,8 @@ ${aiSummary ? JSON.stringify({
   project_idea_suggestions: aiSummary.project_idea_suggestions,
 }, null, 2) : 'Belum ada ringkasan AI sebelumnya'}
 
-GUIDEBOOK ATTACHED: ${pdfBase64 ? 'Ya (Dokumen PDF dilampirkan dan dianalisis langsung)' : 'Tidak ada dokumen PDF'}
+${pdfExtractedText ? `EXTRACTED TEXT CONTENT FROM GUIDEBOOK PDF:\n"""\n${pdfExtractedText.slice(0, 16000)}\n"""\n` : ''}
+GUIDEBOOK ATTACHED: ${pdfBase64 || pdfExtractedText ? 'Ya (Dokumen PDF dilampirkan dan dianalisis langsung)' : 'Tidak ada dokumen PDF'}
 `
 
     const systemInstructionText = `Anda adalah Asisten AI Cerdas khusus untuk kompetisi "${competition.name}".

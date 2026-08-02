@@ -103,6 +103,7 @@ export async function POST(req: Request) {
     let pdfBase64: string | null = null
     let pdfMimeType = 'application/pdf'
     let pdfSizeBytes = 0
+    let pdfExtractedText = ''
 
     if (latestDoc?.cloudinary_url) {
       addLog(`Mengunduh file dokumen "${latestDoc.file_name}"...`)
@@ -122,6 +123,7 @@ export async function POST(req: Request) {
               pdfBase64 = comp.compressedBuffer.toString('base64')
               pdfMimeType = 'application/pdf'
               pdfSizeBytes = comp.compressedBuffer.byteLength
+              pdfExtractedText = comp.extractedText
               comp.logs.forEach((logMsg) => addLog(logMsg))
               addLog(`✓ PDF Siap dianalisis (${(comp.compressedSizeKb).toFixed(1)} KB)`)
               break
@@ -158,6 +160,7 @@ export async function POST(req: Request) {
                       pdfBase64 = comp.compressedBuffer.toString('base64')
                       pdfMimeType = 'application/pdf'
                       pdfSizeBytes = comp.compressedBuffer.byteLength
+                      pdfExtractedText = comp.extractedText
                       comp.logs.forEach((logMsg) => addLog(logMsg))
                       addLog(`✓ Cloudinary Admin API: PDF terkompresi & siap (${(comp.compressedSizeKb).toFixed(1)} KB)`)
                       break
@@ -214,7 +217,9 @@ Return ONLY a valid JSON object with EXACTLY these keys:
   ]
 }`
 
-    const userPromptText = `Analyze all pages of the attached PDF document for competition "${competition.name}".`
+    const userPromptText = `Analyze the guidebook PDF document for competition "${competition.name}".
+${pdfExtractedText ? `\n--- EXTRACTED TEXT FROM PDF GUIDEBOOK ---\n${pdfExtractedText.slice(0, 16000)}\n--- END EXTRACTED TEXT ---\n` : ''}
+Extract the real, actual overview, main theme, subthemes, key requirements, judging criteria, and ALL timeline rundown dates strictly from the PDF document content.`
 
     let parsedResult: any = null
     let modelUsed = preferred_model || 'gemini-3.6-flash'

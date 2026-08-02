@@ -24,6 +24,43 @@ interface CompetitionChatDrawerProps {
   competitionName: string
 }
 
+function FormattedMarkdown({ content }: { content: string }) {
+  const lines = content.split('\n')
+  return (
+    <div className="space-y-1.5 leading-relaxed">
+      {lines.map((line, idx) => {
+        if (!line.trim()) return <div key={idx} className="h-1" />
+
+        const parts = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
+        const parsedLine = parts.map((part, pIdx) => {
+          if (part.startsWith('**') && part.endsWith('**')) {
+            return (
+              <strong key={pIdx} className="font-semibold text-zinc-900 dark:text-zinc-50">
+                {part.slice(2, -2)}
+              </strong>
+            )
+          }
+          if (part.startsWith('*') && part.endsWith('*')) {
+            return <em key={pIdx}>{part.slice(1, -1)}</em>
+          }
+          return part
+        })
+
+        if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+          return (
+            <div key={idx} className="flex gap-2 items-start pl-1">
+              <span className="text-emerald-500 font-bold select-none">•</span>
+              <span>{parsedLine}</span>
+            </div>
+          )
+        }
+
+        return <p key={idx}>{parsedLine}</p>
+      })}
+    </div>
+  )
+}
+
 const QUICK_PROMPTS = [
   { text: 'Apa saja syarat pendaftarannya?', icon: Pin, color: 'text-emerald-500' },
   { text: 'Apa kriteria penilaian & bobotnya?', icon: Trophy, color: 'text-amber-500' },
@@ -36,9 +73,21 @@ export function CompetitionChatDrawer({ competitionId, competitionName }: Compet
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [preferredModel, setPreferredModel] = useState<string>('gemini-3.6-flash')
+  const [preferredModel, setPreferredModel] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('ai-chat-model') || 'gemini-3.6-flash'
+    }
+    return 'gemini-3.6-flash'
+  })
   const [modelStatuses, setModelStatuses] = useState<Record<string, { status: any; message: string }>>({})
   const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  function handleModelChange(model: string) {
+    setPreferredModel(model)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ai-chat-model', model)
+    }
+  }
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -182,7 +231,7 @@ export function CompetitionChatDrawer({ competitionId, competitionName }: Compet
                   options={CHAT_MODEL_OPTIONS}
                   selectedModel={preferredModel}
                   modelStatuses={modelStatuses as any}
-                  onSelectModel={(m) => setPreferredModel(m)}
+                  onSelectModel={handleModelChange}
                 />
 
                 {messages.length > 0 && (
@@ -289,8 +338,8 @@ export function CompetitionChatDrawer({ competitionId, competitionName }: Compet
                         </div>
                       )}
 
-                      <div className="whitespace-pre-wrap font-sans">
-                        {m.content}
+                      <div className="font-sans">
+                        <FormattedMarkdown content={m.content} />
                       </div>
 
                       <div className={`mt-1.5 text-[10px] ${m.role === 'user' ? 'text-emerald-100 text-right' : 'text-zinc-400'}`}>
