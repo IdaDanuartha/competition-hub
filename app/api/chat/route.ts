@@ -168,7 +168,7 @@ ${aiSummary ? JSON.stringify({
   project_idea_suggestions: aiSummary.project_idea_suggestions,
 }, null, 2) : 'Belum ada ringkasan AI sebelumnya'}
 
-${pdfExtractedText ? `EXTRACTED TEXT CONTENT FROM GUIDEBOOK PDF:\n"""\n${pdfExtractedText.slice(0, 16000)}\n"""\n` : ''}
+${pdfExtractedText ? `EXTRACTED TEXT CONTENT FROM GUIDEBOOK PDF:\n"""\n${pdfExtractedText.slice(0, 30000)}\n"""\n` : ''}
 GUIDEBOOK ATTACHED: ${pdfBase64 || pdfExtractedText ? 'Ya (Dokumen PDF dilampirkan dan dianalisis langsung)' : 'Tidak ada dokumen PDF'}
 `
 
@@ -179,7 +179,8 @@ ATURAN PENTING:
 1. Baca dan manfaatkan seluruh konteks data kompetisi, ringkasan AI, serta dokumen PDF Guidebook yang dilampirkan.
 2. Jawab pertanyaan pengguna secara akurat, lugas, ramah, dan terstruktur menggunakan bahasa Indonesia yang baik.
 3. Gunakan format Markdown (bullet points, bold, dll) agar mudah dibaca.
-4. Jika informasi spesifik yang ditanyakan pengguna memang tidak ada baik di data kompetisi maupun dokumen PDF, nyatakan secara jujur bahwa informasi tersebut tidak tercantum dalam guidebook/sistem.`
+4. Sebelum menyatakan suatu informasi "tidak ada", periksa ULANG seluruh isi visual dokumen PDF yang dilampirkan (bukan hanya potongan teks terekstrak), karena teks ekstraksi bisa saja terpotong atau tidak lengkap sementara dokumen PDF aslinya tetap memuat informasi tersebut.
+5. Jika informasi spesifik yang ditanyakan pengguna memang benar-benar tidak ada baik di data kompetisi maupun dokumen PDF (setelah pengecekan visual), nyatakan secara jujur bahwa informasi tersebut tidak tercantum dalam guidebook/sistem.`
 
     const userPromptContent = `Berikut adalah seluruh riwayat percakapan pengguna dan konteks kompetisi:
 
@@ -232,7 +233,7 @@ Jawablah pesan terakhir pengguna dengan jelas dan lengkap berdasarkan dokumen da
     if (!replyText && geminiKey) {
       for (const modelName of geminiModels) {
         try {
-          const apiEndpointModel = modelName.includes('2.0') ? 'gemini-2.0-flash-exp' : 'gemini-1.5-flash'
+          const apiEndpointModel = modelName
           const parts: any[] = []
           if (pdfBase64) {
             parts.push({

@@ -46,6 +46,32 @@ function FormattedMarkdown({ content }: { content: string }) {
           return part
         })
 
+        const headingMatch = line.match(/^(#{1,6})\s+(.*)$/)
+        if (headingMatch) {
+          const level = headingMatch[1].length
+          const headingParts = headingMatch[2].split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).map((part, pIdx) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+              return (
+                <strong key={pIdx} className="font-semibold">
+                  {part.slice(2, -2)}
+                </strong>
+              )
+            }
+            if (part.startsWith('*') && part.endsWith('*')) {
+              return <em key={pIdx}>{part.slice(1, -1)}</em>
+            }
+            return part
+          })
+          return (
+            <p
+              key={idx}
+              className={`font-bold text-zinc-900 dark:text-zinc-50 ${level <= 2 ? 'text-[15px] mt-1' : 'text-sm'}`}
+            >
+              {headingParts}
+            </p>
+          )
+        }
+
         if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
           return (
             <div key={idx} className="flex gap-2 items-start pl-1">
