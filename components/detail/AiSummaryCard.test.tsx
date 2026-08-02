@@ -16,6 +16,9 @@ const mockSummary: AiSummary = {
     { title: 'Idea Alpha', description: 'Web app for tracking', rationale: 'Matches innovation criteria' }
   ],
   model_used: 'gemini-3.6-flash',
+  execution_log: [],
+  execution_time_ms: null,
+  pdf_size_kb: null,
   created_at: '',
   updated_at: '',
 }

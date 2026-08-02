@@ -88,6 +88,9 @@ export type AiSummary = {
   theme_and_subtheme: string | null
   project_idea_suggestions: ProjectIdeaSuggestion[]
   model_used: string
+  execution_log: string[]
+  execution_time_ms: number | null
+  pdf_size_kb: number | null
   created_at: string
   updated_at: string
 }

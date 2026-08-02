@@ -111,9 +111,15 @@ export async function compressPdfBuffer(rawBuffer: Buffer): Promise<CompressionR
   const savedKb = originalSizeKb - compressedSizeKb
   const ratioPercent = Math.max(0, Math.min(99, ((savedKb / originalSizeKb) * 100)))
 
-  logs.push(
-    `[PDF Compression Engine] ⚡ Kompresi Selesai: ${originalSizeKb.toFixed(1)} KB ➔ ${compressedSizeKb.toFixed(1)} KB (Hemat ${ratioPercent.toFixed(1)}%)`
-  )
+  if (ratioPercent > 0) {
+    logs.push(
+      `[PDF Compression Engine] ⚡ Kompresi Selesai: ${originalSizeKb.toFixed(1)} KB ➔ ${compressedSizeKb.toFixed(1)} KB (Hemat ${ratioPercent.toFixed(1)}%)`
+    )
+  } else {
+    logs.push(
+      `[PDF Compression Engine] ℹ️ Tidak ditemukan metadata/thumbnail yang bisa dihapus, file (${originalSizeKb.toFixed(1)} KB) dipakai apa adanya.`
+    )
+  }
 
   return {
     compressedBuffer: optimizedBuffer,

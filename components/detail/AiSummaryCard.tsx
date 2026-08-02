@@ -11,14 +11,8 @@ import { matchPortfolioEntries } from '@/lib/ai-summary'
 import type { AiSummary } from '@/lib/types/database'
 import { ModelSelector } from '@/components/ui/ModelSelector'
 
-interface ExtendedAiSummary extends AiSummary {
-  execution_log?: string[]
-  execution_time_ms?: number
-  pdf_size_kb?: number
-}
-
 interface AiSummaryCardProps {
-  summary: ExtendedAiSummary | null
+  summary: AiSummary | null
   isLoading: boolean
   isGenerating?: boolean
   onRegenerate: (model?: string) => void

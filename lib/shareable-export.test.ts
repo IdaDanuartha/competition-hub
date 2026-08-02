@@ -16,7 +16,8 @@ const mockSummary: AiSummary = {
   key_requirements: ['Max 3 members'], important_dates: ['Submission: Sept 1'],
   judging_criteria: ['Innovation (50%)'], theme_and_subtheme: 'AI & Web',
   project_idea_suggestions: [{ title: 'Idea A', description: 'Smart assistant', rationale: 'High scoring potential' }],
-  model_used: 'gemini-2.5-flash', created_at: '', updated_at: ''
+  model_used: 'gemini-2.5-flash', execution_log: [], execution_time_ms: null, pdf_size_kb: null,
+  created_at: '', updated_at: ''
 }
 
 describe('generateShareableBrief', () => {
