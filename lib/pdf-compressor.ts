@@ -6,6 +6,13 @@
 
 import { PDFParse } from 'pdf-parse'
 
+// pdfjs-dist loads the whole document (fonts, images, page tree) into memory to
+// extract text. On large multi-page guidebooks (banners/graphics push files past
+// a few MB) this can exceed a serverless function's memory/CPU budget and crash
+// the worker (Vercel: WORKER_RESOURCE_LIMIT). Past this size, skip local parsing
+// and let the AI model read the PDF directly via its own vision/inlineData input.
+const MAX_TEXT_EXTRACTION_SIZE_BYTES = 5 * 1024 * 1024
+
 export interface CompressionResult {
   compressedBuffer: Buffer
   originalSizeKb: number
@@ -44,13 +51,19 @@ export async function compressPdfBuffer(rawBuffer: Buffer): Promise<CompressionR
 
   logs.push(`[PDF Compression Engine] Ukuran awal file PDF: ${originalSizeKb.toFixed(1)} KB (${(originalSizeKb / 1024).toFixed(2)} MB)`)
 
-  // Extract text first for accuracy
-  const extractedText = await extractTextFromPdfBuffer(rawBuffer)
-  if (extractedText) {
-    const wordCount = extractedText.split(/\s+/).length
-    logs.push(`[PDF Extraction Engine] ✓ Berhasil mengekstrak ${wordCount} kata (${extractedText.length} karakter) dari stream PDF`)
+  // Extract text first for accuracy — skip on large files to avoid OOM/CPU limits
+  // in the serverless function; the AI model still gets the PDF directly (vision).
+  let extractedText = ''
+  if (rawBuffer.byteLength <= MAX_TEXT_EXTRACTION_SIZE_BYTES) {
+    extractedText = await extractTextFromPdfBuffer(rawBuffer)
+    if (extractedText) {
+      const wordCount = extractedText.split(/\s+/).length
+      logs.push(`[PDF Extraction Engine] ✓ Berhasil mengekstrak ${wordCount} kata (${extractedText.length} karakter) dari stream PDF`)
+    } else {
+      logs.push(`[PDF Extraction Engine] ℹ️ Memproses PDF via Multimodal Vision AI Engine`)
+    }
   } else {
-    logs.push(`[PDF Extraction Engine] ℹ️ Memproses PDF via Multimodal Vision AI Engine`)
+    logs.push(`[PDF Extraction Engine] ℹ️ File PDF ${originalSizeKb.toFixed(1)} KB melebihi batas ekstraksi teks lokal, memproses via Multimodal Vision AI Engine`)
   }
 
   // If under 3MB, return directly without metadata modification to preserve 100% structure & fonts
