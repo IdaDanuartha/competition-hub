@@ -24,7 +24,7 @@ import { useAiSummary, useGenerateAiSummary } from '@/hooks/useAiSummary'
 import { formatTag } from '@/lib/tags'
 import type { CompetitionFormValues } from '@/lib/validation'
 
-function AiSummarySection({ competitionId }: { competitionId: string }) {
+function AiSummarySection({ competitionId, onGenerateStateChange }: { competitionId: string; onGenerateStateChange?: (isGenerating: boolean) => void }) {
   const { data: summary, isLoading } = useAiSummary(competitionId)
   const { mutate: generate, isPending } = useGenerateAiSummary()
 
@@ -48,6 +48,9 @@ export default function CompetitionDetailPage({ params }: { params: Promise<{ id
   const { data: rundownItems = [] } = useRundownItems(id)
   const { mutate: createRundownItem } = useCreateRundownItem(id)
   const { data: notificationLogs = [] } = useNotificationLogs(rundownItems.map((r) => r.id))
+  const { mutate: generateAiSummary, isPending: isGeneratingAi } = useGenerateAiSummary()
+  const { data: summary, isLoading: isLoadingSummary } = useAiSummary(id)
+
   const [isEditing, setIsEditing] = useState(false)
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false)
   const [isAddRundownModalOpen, setIsAddRundownModalOpen] = useState(false)
@@ -138,7 +141,13 @@ export default function CompetitionDetailPage({ params }: { params: Promise<{ id
             {competition.notes && <p className="whitespace-pre-wrap">{competition.notes}</p>}
           </div>
           <LinksSection instagramUrl={competition.instagram_url} websiteUrl={competition.website_url} />
-          <AiSummarySection competitionId={competition.id} />
+          
+          <AiSummaryCard
+            summary={summary ?? null}
+            isLoading={isLoadingSummary}
+            isGenerating={isGeneratingAi}
+            onRegenerate={(model) => generateAiSummary({ competitionId: id, preferredModel: model })}
+          />
 
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Guidebooks &amp; Documents</h2>
@@ -153,7 +162,7 @@ export default function CompetitionDetailPage({ params }: { params: Promise<{ id
                 Add item
               </Button>
             </div>
-            <RundownList items={rundownItems} />
+            <RundownList items={rundownItems} isLoading={isGeneratingAi} />
             <RundownItemModal
               isOpen={isAddRundownModalOpen}
               onClose={() => setIsAddRundownModalOpen(false)}

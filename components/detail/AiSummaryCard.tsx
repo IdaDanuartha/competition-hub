@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Sparkles, RefreshCw, Copy, Check, ChevronDown, ChevronUp, Tag, Layers, Terminal } from 'lucide-react'
+import { Sparkles, RefreshCw, Copy, Check, ChevronDown, ChevronUp, Tag, Layers, Terminal, Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -218,11 +218,18 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
       : 'bg-red-500'
 
   // Default execution logs representation if absent
-  const executionLogs = summary?.execution_log ?? [
-    `[${summary?.updated_at ? new Date(summary.updated_at).toLocaleTimeString('id-ID') : 'Terbaru'}] Inisialisasi analisis AI`,
-    `[Model Status] ${selectedModel}: ${modelStatuses[selectedModel]?.message || 'Aktif'}`,
-    `[Status] Analisis tersimpan di database`,
-  ]
+  const executionLogs = isGenerating
+    ? [
+        `[${new Date().toLocaleTimeString('id-ID')}] Memulai regenerasi AI Summary & Timeline...`,
+        `[Model Engine] Mengirim payload ke ${selectedModel}...`,
+        `[Compress Engine] PDF terstruktur & dioptimasi otomatis`,
+        `[Status] Menunggu respons AI Model & pembaruan database...`,
+      ]
+    : summary?.execution_log ?? [
+        `[${summary?.updated_at ? new Date(summary.updated_at).toLocaleTimeString('id-ID') : 'Terbaru'}] Inisialisasi analisis AI`,
+        `[Model Status] ${selectedModel}: ${modelStatuses[selectedModel]?.message || 'Aktif'}`,
+        `[Status] Analisis tersimpan di database`,
+      ]
 
   return (
     <Card className="space-y-4 p-4 sm:p-5">
@@ -242,7 +249,7 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          {summary && !showSkeleton && (
+          {(summary || isGenerating) && (
             <>
               <Button
                 variant="ghost"
@@ -253,19 +260,23 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
                 <Terminal className="h-3.5 w-3.5" />
                 <span>Logs AI</span>
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleCopy}>
-                {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                {copied ? 'Copied' : 'Copy'}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsExpanded((prev) => !prev)}
-                aria-label={isExpanded ? 'Minimize summary' : 'Expand summary'}
-              >
-                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                {isExpanded ? 'Minimize' : 'Expand'}
-              </Button>
+              {summary && !showSkeleton && (
+                <>
+                  <Button variant="ghost" size="sm" onClick={handleCopy}>
+                    {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copied ? 'Copied' : 'Copy'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsExpanded((prev) => !prev)}
+                    aria-label={isExpanded ? 'Minimize summary' : 'Expand summary'}
+                  >
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    {isExpanded ? 'Minimize' : 'Expand'}
+                  </Button>
+                </>
+              )}
             </>
           )}
           <Button variant="secondary" size="sm" onClick={() => onRegenerate(selectedModel)} disabled={isGenerating}>
@@ -276,13 +287,13 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
       </div>
 
       {/* AI Execution Logs Accordion */}
-      {showLogs && summary && (
+      {showLogs && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3.5 font-mono text-xs text-emerald-400 space-y-2 animate-in fade-in duration-150">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-2 text-[11px] text-zinc-400">
             <span className="flex items-center gap-1.5 text-zinc-200 font-semibold">
               <Terminal className="h-3.5 w-3.5 text-emerald-400" /> Execution Log (AI Engine)
             </span>
-            <span>Model: {summary.model_used || selectedModel}</span>
+            <span>Model: {selectedModel}</span>
           </div>
           <div className="max-h-40 overflow-y-auto space-y-1 text-[11px] leading-relaxed text-zinc-300">
             {executionLogs.map((log, i) => (
@@ -294,6 +305,22 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
 
       {showSkeleton ? (
         <div className="space-y-4 py-2">
+          {isGenerating && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 dark:border-amber-900/60 dark:bg-amber-950/40 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-semibold text-amber-900 dark:text-amber-200">
+                <Loader2 className="h-4 w-4 animate-spin text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>Meregenerasi AI Summary &amp; Timeline dengan {selectedModel}...</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLogs((prev) => !prev)}
+                className="flex items-center gap-1 text-[11px] font-semibold text-amber-800 dark:text-amber-200 hover:underline cursor-pointer"
+              >
+                <Terminal className="h-3 w-3" />
+                <span>{showLogs ? 'Minimize Log' : 'Expand Log'}</span>
+              </button>
+            </div>
+          )}
           <div className="space-y-2">
             <Skeleton className="h-4 w-24" />
             <Skeleton className="h-4 w-full" />

@@ -1,17 +1,38 @@
 'use client'
 
 import { useState } from 'react'
-import { Trash2, Calendar } from 'lucide-react'
+import { Trash2, Calendar, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { formatDateTime } from '@/lib/date-format'
 import { useDeleteRundownItem } from '@/hooks/useRundown'
 import type { RundownItem } from '@/lib/types/database'
 
-export function RundownList({ items }: { items: RundownItem[] }) {
+export function RundownList({ items, isLoading }: { items: RundownItem[]; isLoading?: boolean }) {
   const competitionId = items[0]?.competition_id ?? ''
   const { mutate: deleteItem } = useDeleteRundownItem(competitionId)
   const [deleteTarget, setDeleteTarget] = useState<RundownItem | null>(null)
+
+  if (isLoading) {
+    return (
+      <div className="relative ml-4 border-l-2 border-sky-300 py-2 space-y-6 dark:border-sky-800 animate-pulse">
+        <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Generating &amp; updating timeline with AI...</span>
+        </div>
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="relative pl-6 space-y-2">
+            <div className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-2 border-sky-300 bg-white dark:border-sky-700 dark:bg-zinc-900" />
+            <div className="h-5 w-36 rounded-full bg-sky-100 dark:bg-sky-950/60" />
+            <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-xs dark:border-zinc-800 dark:bg-zinc-900 space-y-2">
+              <div className="h-4 w-48 rounded bg-zinc-200 dark:bg-zinc-800" />
+              <div className="h-3 w-3/4 rounded bg-zinc-100 dark:bg-zinc-800/60" />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   if (items.length === 0) {
     return (
@@ -60,7 +81,7 @@ export function RundownList({ items }: { items: RundownItem[] }) {
               <button
                 type="button"
                 onClick={() => setDeleteTarget(item)}
-                className="shrink-0 text-zinc-400 opacity-80 hover:text-red-600 transition-opacity group-hover:opacity-100 dark:hover:text-red-400"
+                className="shrink-0 text-zinc-400 opacity-80 hover:text-red-600 transition-opacity group-hover:opacity-100 dark:hover:text-red-400 cursor-pointer"
                 aria-label={`Delete ${item.title}`}
               >
                 <Trash2 className="h-4 w-4" />

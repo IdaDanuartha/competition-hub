@@ -12,12 +12,20 @@ import type { CompetitionDocument } from '@/lib/types/database'
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024
 
-function formatSize(bytes: number | null | undefined): string {
-  if (!bytes || bytes <= 0) return ''
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(0)} KB`
+function formatSize(bytes: number | null | undefined, summaryKb?: number | null): string {
+  if (bytes && bytes > 0) {
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(0)} KB`
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  if (summaryKb && summaryKb > 0) {
+    if (summaryKb < 1024) {
+      return `${summaryKb} KB`
+    }
+    return `${(summaryKb / 1024).toFixed(1)} MB`
+  }
+  return 'PDF'
 }
 
 export function DocumentsSection({
@@ -69,7 +77,7 @@ export function DocumentsSection({
           {sorted.map((doc) => {
             const documentViewUrl = `/api/documents/view?url=${encodeURIComponent(doc.cloudinary_url)}&name=${encodeURIComponent(doc.file_name)}`
             const docSizeBytes = (doc as any).file_size || (doc as any).size_bytes || (summary?.pdf_size_kb ? summary.pdf_size_kb * 1024 : null)
-            const formattedSizeStr = formatSize(docSizeBytes)
+            const formattedSizeStr = formatSize(docSizeBytes, summary?.pdf_size_kb)
 
             return (
               <li key={doc.id} className="flex items-center gap-2 rounded-md border border-zinc-200 p-2.5 text-sm dark:border-zinc-800">
