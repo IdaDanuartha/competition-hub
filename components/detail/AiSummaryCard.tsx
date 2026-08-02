@@ -217,17 +217,40 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
       ? 'bg-zinc-400'
       : 'bg-red-500'
 
-  // Default execution logs representation if absent
+  const [liveLogStep, setLiveLogStep] = useState(0)
+
+  useEffect(() => {
+    if (isGenerating) {
+      setShowLogs(true)
+      setLiveLogStep(1)
+      const t1 = setTimeout(() => setLiveLogStep(2), 600)
+      const t2 = setTimeout(() => setLiveLogStep(3), 1500)
+      const t3 = setTimeout(() => setLiveLogStep(4), 3000)
+      const t4 = setTimeout(() => setLiveLogStep(5), 5500)
+      return () => {
+        clearTimeout(t1)
+        clearTimeout(t2)
+        clearTimeout(t3)
+        clearTimeout(t4)
+      }
+    } else {
+      setLiveLogStep(0)
+    }
+  }, [isGenerating])
+
+  const liveLogs = [
+    `[${new Date().toLocaleTimeString('id-ID')}] [1/6] Inisialisasi pipeline regenerasi AI untuk model ${selectedModel}...`,
+    liveLogStep >= 2 ? `[${new Date().toLocaleTimeString('id-ID')}] [2/6] Membaca file guidebook PDF dari Supabase Storage...` : null,
+    liveLogStep >= 3 ? `[${new Date().toLocaleTimeString('id-ID')}] [3/6] ✓ Buffer PDF berhasil dibaca dari storage` : null,
+    liveLogStep >= 4 ? `[${new Date().toLocaleTimeString('id-ID')}] [4/6] Menjalankan Mesin Kompresi Stream & Parser Tanggal Indonesia...` : null,
+    liveLogStep >= 5 ? `[${new Date().toLocaleTimeString('id-ID')}] [5/6] Mengirimkan payload ke AI Model Engine (${selectedModel}) & memproses tabel timeline...` : null,
+  ].filter(Boolean) as string[]
+
   const executionLogs = isGenerating
-    ? [
-        `[${new Date().toLocaleTimeString('id-ID')}] Memulai regenerasi AI Summary & Timeline...`,
-        `[Model Engine] Mengirim payload ke ${selectedModel}...`,
-        `[Compress Engine] PDF terstruktur & dioptimasi otomatis`,
-        `[Status] Menunggu respons AI Model & pembaruan database...`,
-      ]
+    ? liveLogs
     : summary?.execution_log ?? [
         `[${summary?.updated_at ? new Date(summary.updated_at).toLocaleTimeString('id-ID') : 'Terbaru'}] Inisialisasi analisis AI`,
-        `[Model Status] ${selectedModel}: ${modelStatuses[selectedModel]?.message || 'Aktif'}`,
+        `[Model Engine] ${selectedModel}: ${modelStatuses[selectedModel]?.message || 'Aktif'}`,
         `[Status] Analisis tersimpan di database`,
       ]
 
@@ -279,7 +302,15 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
               )}
             </>
           )}
-          <Button variant="secondary" size="sm" onClick={() => onRegenerate(selectedModel)} disabled={isGenerating}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setShowLogs(true)
+              onRegenerate(selectedModel)
+            }}
+            disabled={isGenerating}
+          >
             <RefreshCw className={`h-3.5 w-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
             {summary ? 'Regenerate' : 'Generate Summary'}
           </Button>
