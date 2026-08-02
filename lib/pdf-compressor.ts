@@ -4,15 +4,6 @@
  * to ensure PDF guidebooks load fast, remain 100% valid, and extract accurate text for AI.
  */
 
-import { PDFParse } from 'pdf-parse'
-
-// pdfjs-dist loads the whole document (fonts, images, page tree) into memory to
-// extract text. On large multi-page guidebooks (banners/graphics push files past
-// a few MB) this can exceed a serverless function's memory/CPU budget and crash
-// the worker (Vercel: WORKER_RESOURCE_LIMIT). Past this size, skip local parsing
-// and let the AI model read the PDF directly via its own vision/inlineData input.
-const MAX_TEXT_EXTRACTION_SIZE_BYTES = 5 * 1024 * 1024
-
 export interface CompressionResult {
   compressedBuffer: Buffer
   originalSizeKb: number
@@ -20,6 +11,28 @@ export interface CompressionResult {
   compressionRatioPercent: number
   extractedText: string
   logs: string[]
+}
+
+/**
+ * pdf-parse v2 (pdfjs-dist under the hood) references the browser Canvas API
+ * `DOMMatrix` at module scope even for plain text extraction. That's absent in
+ * Node, so importing it crashes with "DOMMatrix is not defined" in Vercel's
+ * serverless runtime — reported misleadingly as a WORKER_RESOURCE_LIMIT crash,
+ * unrelated to file size. A no-op stub satisfies the reference since text
+ * extraction never actually performs matrix math.
+ *
+ * This must run before pdf-parse's module code executes, and `import`
+ * statements are hoisted above any code in the same module — so pdf-parse is
+ * loaded via a dynamic `import()` inside the function below (evaluated at
+ * call time, after the polyfill is set), never as a static top-level import.
+ */
+function ensureDomMatrixPolyfill() {
+  const g = globalThis as any
+  if (typeof g.DOMMatrix === 'undefined') {
+    g.DOMMatrix = class DOMMatrix {
+      constructor(_init?: unknown) {}
+    }
+  }
 }
 
 /**
@@ -31,7 +44,9 @@ export interface CompressionResult {
  * does the actual CMap decoding.
  */
 export async function extractTextFromPdfBuffer(rawBuffer: Buffer): Promise<string> {
-  let parser: PDFParse | null = null
+  ensureDomMatrixPolyfill()
+  const { PDFParse } = await import('pdf-parse')
+  let parser: InstanceType<typeof PDFParse> | null = null
   try {
     parser = new PDFParse({ data: rawBuffer })
     const result = await parser.getText()
@@ -51,19 +66,13 @@ export async function compressPdfBuffer(rawBuffer: Buffer): Promise<CompressionR
 
   logs.push(`[PDF Compression Engine] Ukuran awal file PDF: ${originalSizeKb.toFixed(1)} KB (${(originalSizeKb / 1024).toFixed(2)} MB)`)
 
-  // Extract text first for accuracy — skip on large files to avoid OOM/CPU limits
-  // in the serverless function; the AI model still gets the PDF directly (vision).
-  let extractedText = ''
-  if (rawBuffer.byteLength <= MAX_TEXT_EXTRACTION_SIZE_BYTES) {
-    extractedText = await extractTextFromPdfBuffer(rawBuffer)
-    if (extractedText) {
-      const wordCount = extractedText.split(/\s+/).length
-      logs.push(`[PDF Extraction Engine] ✓ Berhasil mengekstrak ${wordCount} kata (${extractedText.length} karakter) dari stream PDF`)
-    } else {
-      logs.push(`[PDF Extraction Engine] ℹ️ Memproses PDF via Multimodal Vision AI Engine`)
-    }
+  // Extract text first for accuracy
+  const extractedText = await extractTextFromPdfBuffer(rawBuffer)
+  if (extractedText) {
+    const wordCount = extractedText.split(/\s+/).length
+    logs.push(`[PDF Extraction Engine] ✓ Berhasil mengekstrak ${wordCount} kata (${extractedText.length} karakter) dari stream PDF`)
   } else {
-    logs.push(`[PDF Extraction Engine] ℹ️ File PDF ${originalSizeKb.toFixed(1)} KB melebihi batas ekstraksi teks lokal, memproses via Multimodal Vision AI Engine`)
+    logs.push(`[PDF Extraction Engine] ℹ️ Memproses PDF via Multimodal Vision AI Engine`)
   }
 
   // If under 3MB, return directly without metadata modification to preserve 100% structure & fonts

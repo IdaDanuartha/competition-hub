@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { FileText, Download, Trash2, Loader2, Terminal, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react'
 import { FileDropzone } from '@/components/ui/FileDropzone'
@@ -45,6 +45,61 @@ export function DocumentsSection({
   // Hidden by default as requested
   const [showLiveTerminal, setShowLiveTerminal] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
+  const [uploadLogStep, setUploadLogStep] = useState(0)
+  const [genLogStep, setGenLogStep] = useState(0)
+
+  useEffect(() => {
+    if (status === 'uploading') {
+      setShowLiveTerminal(true)
+      setUploadLogStep(1)
+      const t1 = setTimeout(() => setUploadLogStep(2), 400)
+      const t2 = setTimeout(() => setUploadLogStep(3), 1200)
+      const t3 = setTimeout(() => setUploadLogStep(4), 2000)
+      return () => {
+        clearTimeout(t1)
+        clearTimeout(t2)
+        clearTimeout(t3)
+      }
+    } else {
+      setUploadLogStep(0)
+    }
+  }, [status])
+
+  useEffect(() => {
+    if (isGeneratingAi) {
+      setShowLiveTerminal(true)
+      setGenLogStep(1)
+      const t1 = setTimeout(() => setGenLogStep(2), 600)
+      const t2 = setTimeout(() => setGenLogStep(3), 1500)
+      const t3 = setTimeout(() => setGenLogStep(4), 3000)
+      const t4 = setTimeout(() => setGenLogStep(5), 5500)
+      return () => {
+        clearTimeout(t1)
+        clearTimeout(t2)
+        clearTimeout(t3)
+        clearTimeout(t4)
+      }
+    } else {
+      setGenLogStep(0)
+    }
+  }, [isGeneratingAi])
+
+  const ts = () => new Date().toLocaleTimeString('id-ID', { hour12: false })
+
+  const uploadLiveLogs = [
+    `[${ts()}] [1/4] Memvalidasi file & menyiapkan koneksi ke storage...`,
+    uploadLogStep >= 2 ? `[${ts()}] [2/4] Mengunggah file ke Supabase Storage bucket "guidebooks"...` : null,
+    uploadLogStep >= 3 ? `[${ts()}] [3/4] ✓ Upload berhasil, mengambil public URL dokumen...` : null,
+    uploadLogStep >= 4 ? `[${ts()}] [4/4] Menyimpan metadata dokumen ke database...` : null,
+  ].filter(Boolean) as string[]
+
+  const generateLiveLogs = [
+    `[${ts()}] [1/6] Inisialisasi pipeline analisis AI guidebook...`,
+    genLogStep >= 2 ? `[${ts()}] [2/6] Membaca file guidebook PDF dari storage...` : null,
+    genLogStep >= 3 ? `[${ts()}] [3/6] ✓ Buffer PDF berhasil dibaca, menjalankan mesin ekstraksi teks...` : null,
+    genLogStep >= 4 ? `[${ts()}] [4/6] Mengompresi PDF & mem-parsing tanggal timeline...` : null,
+    genLogStep >= 5 ? `[${ts()}] [5/6] Mengirimkan payload ke AI Model Engine & memproses tabel timeline...` : null,
+  ].filter(Boolean) as string[]
 
   const sorted = [...documents].sort(
     (a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()
@@ -145,7 +200,11 @@ export function DocumentsSection({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-xs font-semibold text-amber-900 dark:text-amber-200 min-w-0">
               <Loader2 className="h-4 w-4 animate-spin text-amber-600 dark:text-amber-400 shrink-0" />
-              <span className="truncate">{status === 'uploading' ? '1/2. Mengunggah file guidebook ke storage...' : '2/2. Mengompresi PDF & menganalisis isi dengan AI...'}</span>
+              <span className="truncate">
+                {status === 'uploading'
+                  ? (uploadLiveLogs[uploadLiveLogs.length - 1] ?? '1/4. Mengunggah file guidebook ke storage...').replace(/^\[[^\]]+\]\s*/, '')
+                  : (generateLiveLogs[generateLiveLogs.length - 1] ?? '1/6. Menganalisis isi guidebook dengan AI...').replace(/^\[[^\]]+\]\s*/, '')}
+              </span>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -167,14 +226,14 @@ export function DocumentsSection({
           {showLiveTerminal && (
             <div className="rounded-lg bg-zinc-950 p-2.5 font-mono text-[11px] text-zinc-300 space-y-1 shadow-inner max-h-36 overflow-y-auto animate-in fade-in duration-150">
               <p className="text-amber-400 font-semibold">[LOGS EKSEKUSI REALTIME]</p>
-              {status === 'uploading' && <p className="text-zinc-400">&gt; Mengunggah file ke cloud storage (Supabase/Cloudinary)...</p>}
-              {isGeneratingAi && (
-                <>
-                  <p className="text-emerald-400">&gt; ✓ File terunggah. Memulai kompresi PDF otomatis...</p>
-                  <p className="text-sky-300">&gt; ⚡ Structuring PDF streams &amp; stripping metadata...</p>
-                  <p className="text-zinc-300">&gt; Mengirimkan prompt &amp; PDF terkompresi ke AI Engine...</p>
-                </>
-              )}
+              {(status === 'uploading' ? uploadLiveLogs : generateLiveLogs).map((log, idx) => (
+                <p
+                  key={idx}
+                  className={log.includes('✓') ? 'text-emerald-400' : log.includes('⚡') ? 'text-sky-300' : 'text-zinc-300'}
+                >
+                  &gt; {log}
+                </p>
+              ))}
             </div>
           )}
         </div>
