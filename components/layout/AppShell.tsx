@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Briefcase, Settings } from 'lucide-react'
+import { LayoutDashboard, Settings } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { ThemeToggle } from '@/components/settings/ThemeToggle'
 import { OfflineBanner } from './OfflineBanner'
@@ -25,7 +25,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const isDashboardActive = pathname === '/dashboard' || pathname.startsWith('/competitions')
-  const isPortfolioActive = pathname === '/portfolio'
   const isSettingsActive = pathname === '/settings'
 
   return (
@@ -49,16 +48,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <LayoutDashboard className="h-4 w-4" />
             Dashboard
-          </Link>
-          <Link
-            href="/portfolio"
-            className={cn(
-              'flex items-center gap-1.5 text-sm transition-colors hover:text-zinc-900 dark:hover:text-zinc-50',
-              isPortfolioActive ? 'font-semibold text-sky-600 dark:text-sky-400' : 'text-zinc-600 dark:text-zinc-400'
-            )}
-          >
-            <Briefcase className="h-4 w-4" />
-            Portfolio
           </Link>
           <Link
             href="/settings"
@@ -95,18 +84,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <LayoutDashboard className="h-5 w-5" />
           <span>Dashboard</span>
-        </Link>
-        <Link
-          href="/portfolio"
-          className={cn(
-            'flex flex-1 flex-col items-center gap-1 py-1 text-[11px] font-medium transition-colors',
-            isPortfolioActive
-              ? 'text-sky-600 dark:text-sky-400'
-              : 'text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200'
-          )}
-        >
-          <Briefcase className="h-5 w-5" />
-          <span>Portfolio</span>
         </Link>
         <Link
           href="/settings"

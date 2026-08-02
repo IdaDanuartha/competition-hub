@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS: UserSettings = {
 
 export default function SettingsPage() {
   const { data: settings, isLoading } = useUserSettings()
-  const { mutate: update } = useUpdateUserSettings()
+  const { mutateAsync: update, isPending } = useUpdateUserSettings()
 
   if (isLoading) {
     return (
@@ -49,6 +49,7 @@ export default function SettingsPage() {
         <WhatsAppSettingsForm
           defaultNumber={activeSettings.whatsapp_number ?? ''}
           defaultOffsets={activeSettings.default_reminder_offsets_minutes}
+          isLoading={isPending}
           onSubmit={(values) => update(values)}
         />
       </section>

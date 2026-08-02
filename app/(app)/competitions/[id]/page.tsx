@@ -122,6 +122,7 @@ export default function CompetitionDetailPage({ params }: { params: Promise<{ id
           }}
           onSubmit={handleSubmit}
           submitLabel="Save changes"
+          isEditMode={true}
         />
       ) : (
         <div className="space-y-6">
