@@ -1,0 +1,65 @@
+'use client'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createClient } from '@/lib/supabase/client'
+import type { AiSummary } from '@/lib/types/database'
+
+export function useAiSummary(competitionId: string) {
+  return useQuery({
+    queryKey: ['ai-summary', competitionId],
+    queryFn: async (): Promise<AiSummary | null> => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('ai_summaries')
+        .select('*')
+        .eq('competition_id', competitionId)
+        .maybeSingle()
+
+      if (error) throw error
+      return data as AiSummary | null
+    },
+    enabled: !!competitionId,
+  })
+}
+
+export function useGenerateAiSummary() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: string | { competitionId: string; preferredModel?: string }) => {
+      const competitionId = typeof args === 'string' ? args : args.competitionId
+      const preferredModel = typeof args === 'string' ? undefined : args.preferredModel
+      const supabase = createClient()
+
+      // Try Supabase Edge Function first
+      try {
+        const { data, error } = await supabase.functions.invoke('generate-ai-summary', {
+          body: { competition_id: competitionId, preferred_model: preferredModel },
+        })
+        if (!error && data && !data.error) {
+          return data as AiSummary
+        }
+      } catch (_e) {
+        console.warn('Edge function generate-ai-summary failed, attempting API route fallback...')
+      }
+
+      // Fallback to Next.js API Route
+      const res = await fetch('/api/generate-ai-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ competition_id: competitionId, preferred_model: preferredModel }),
+      })
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}))
+        throw new Error(errJson.error || 'Failed to generate AI summary')
+      }
+
+      return (await res.json()) as AiSummary
+    },
+    onSuccess: (_, args) => {
+      const competitionId = typeof args === 'string' ? args : args.competitionId
+      queryClient.invalidateQueries({ queryKey: ['ai-summary', competitionId] })
+      queryClient.invalidateQueries({ queryKey: ['rundown-items', competitionId] })
+    },
+  })
+}
