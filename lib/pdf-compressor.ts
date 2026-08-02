@@ -1,6 +1,6 @@
 /**
  * PDF Compressor & Memory Optimizer
- * Performs non-destructive metadata stripping and PDF text extraction
+ * Performs non-destructive metadata stripping and comprehensive PDF text extraction
  * to ensure PDF guidebooks load fast, remain 100% valid, and extract accurate text for AI.
  */
 
@@ -14,7 +14,7 @@ export interface CompressionResult {
 }
 
 /**
- * Extract plain text from PDF buffer by parsing text streams and string objects.
+ * Extract plain text from PDF buffer by parsing text streams, string arrays, and readable ASCII/UTF-8 words.
  */
 export function extractTextFromPdfBuffer(rawBuffer: Buffer): string {
   try {
@@ -25,8 +25,9 @@ export function extractTextFromPdfBuffer(rawBuffer: Buffer): string {
     const tjRegex = /\(([^()]{2,})\)\s*Tj/g
     let match
     while ((match = tjRegex.exec(pdfContent)) !== null) {
-      if (match[1] && match[1].trim().length > 1) {
-        extractedParts.push(match[1].trim())
+      const txt = match[1].trim()
+      if (txt.length > 1 && !/^\d+$/.test(txt)) {
+        extractedParts.push(txt)
       }
     }
 
@@ -36,25 +37,28 @@ export function extractTextFromPdfBuffer(rawBuffer: Buffer): string {
       const innerTj = /\(([^()]{2,})\)/g
       let innerMatch
       while ((innerMatch = innerTj.exec(match[0])) !== null) {
-        if (innerMatch[1] && innerMatch[1].trim().length > 1) {
-          extractedParts.push(innerMatch[1].trim())
+        const txt = innerMatch[1].trim()
+        if (txt.length > 1 && !/^\d+$/.test(txt)) {
+          extractedParts.push(txt)
         }
       }
     }
 
-    // 3. Fallback: extract readable words from BT...ET text blocks if Tj matching yielded little text
-    if (extractedParts.length < 10) {
-      const btRegex = /BT([\s\S]*?)ET/g
-      while ((match = btRegex.exec(pdfContent)) !== null) {
-        const textInBlock = match[1].replace(/[^\x20-\x7E\n\r\t]/g, ' ')
-        const words = textInBlock.split(/\s+/).filter((w) => w.length > 2 && !/^\d+$/.test(w))
-        if (words.length > 0) {
-          extractedParts.push(words.join(' '))
-        }
+    // 3. Extract readable text lines & words from BT...ET blocks
+    const btRegex = /BT([\s\S]*?)ET/g
+    while ((match = btRegex.exec(pdfContent)) !== null) {
+      const textInBlock = match[1].replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+      const cleanWords = textInBlock
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && !/^\d+$/.test(w) && !w.startsWith('/') && !w.startsWith('\\'))
+      if (cleanWords.length > 0) {
+        extractedParts.push(cleanWords.join(' '))
       }
     }
 
-    const fullText = extractedParts.join(' ').replace(/\s+/g, ' ').trim()
+    // De-duplicate adjacent repetitive words
+    const filteredParts = extractedParts.filter((item, index, self) => self.indexOf(item) === index)
+    const fullText = filteredParts.join(' ').replace(/\s+/g, ' ').trim()
     return fullText
   } catch (_e) {
     return ''
@@ -70,14 +74,15 @@ export function compressPdfBuffer(rawBuffer: Buffer): CompressionResult {
   // Extract text first for accuracy
   const extractedText = extractTextFromPdfBuffer(rawBuffer)
   if (extractedText) {
-    logs.push(`[PDF Extraction Engine] ✓ Berhasil mengekstrak ${extractedText.split(' ').length} kata teks dari PDF`)
+    const wordCount = extractedText.split(/\s+/).length
+    logs.push(`[PDF Extraction Engine] ✓ Berhasil mengekstrak ${wordCount} kata (${extractedText.length} karakter) dari stream PDF`)
   } else {
-    logs.push(`[PDF Extraction Engine] ℹ️ Memproses PDF sebagai dokumen biner multimodal`)
+    logs.push(`[PDF Extraction Engine] ℹ️ Memproses PDF via Multimodal Vision AI Engine`)
   }
 
-  // If already under 2MB, return directly without metadata modification to preserve 100% PDF structure
-  if (originalSizeKb <= 2048) {
-    logs.push(`[PDF Compression Engine] ✓ Ukuran file PDF ideal (${originalSizeKb.toFixed(1)} KB), struktur PDF utuh.`)
+  // If under 3MB, return directly without metadata modification to preserve 100% structure & fonts
+  if (originalSizeKb <= 3072) {
+    logs.push(`[PDF Compression Engine] ✓ Ukuran file PDF ideal (${originalSizeKb.toFixed(1)} KB), 100% struktur PDF utuh.`)
     return {
       compressedBuffer: rawBuffer,
       originalSizeKb: Math.round(originalSizeKb),

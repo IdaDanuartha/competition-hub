@@ -3,6 +3,52 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { compressPdfBuffer } from '@/lib/pdf-compressor'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
+function parseIndonesianDateToIso(dateStr: string): string | null {
+  if (!dateStr) return null
+  const months: Record<string, string> = {
+    januari: '01', jan: '01',
+    februari: '02', feb: '02',
+    maret: '03', mar: '03',
+    april: '04', apr: '04',
+    mei: '05',
+    juni: '06', jun: '06',
+    juli: '07', jul: '07',
+    agustus: '08', ags: '08', agu: '08',
+    september: '09', sep: '09',
+    oktober: '10', okt: '10',
+    november: '11', nov: '11',
+    desember: '12', des: '12',
+  }
+
+  const strLower = dateStr.toLowerCase()
+
+  // Match e.g. "31 Juli - 09 Agustus 2026" or "23 September 2026" or "31 Oktober 2026"
+  const match = strLower.match(/(?:(\d{1,2})\s+)?([a-z]+)(?:\s*(?:-|s\/d|\s)\s*\d{1,2}\s+[a-z]+)?\s+(\d{4})/)
+  if (match) {
+    const day = match[1] ? match[1].padStart(2, '0') : '01'
+    const monthName = match[2]
+    const year = match[3]
+    const month = months[monthName]
+    if (month && year) {
+      return `${year}-${month}-${day}T08:00:00.000Z`
+    }
+  }
+
+  // Fallback match e.g. "21-22 September 2026"
+  const matchRange = strLower.match(/(\d{1,2})\s*(?:-|\s*s\/d\s*)\s*\d{1,2}\s+([a-z]+)\s+(\d{4})/)
+  if (matchRange) {
+    const day = matchRange[1].padStart(2, '0')
+    const monthName = matchRange[2]
+    const year = matchRange[3]
+    const month = months[monthName]
+    if (month && year) {
+      return `${year}-${month}-${day}T08:00:00.000Z`
+    }
+  }
+
+  return null
+}
+
 export async function POST(req: Request) {
   const startTime = Date.now()
   const logs: string[] = []
@@ -147,43 +193,57 @@ export async function POST(req: Request) {
     const wordCount = pdfExtractedText ? pdfExtractedText.split(/\s+/).length : 0
     addLog(`[4/6] Mesin Ekstraksi Teks: ${wordCount} kata terekstrak dari PDF (${pdfExtractedText.length} karakter)`)
 
-    const systemPromptText = `You are a strict, highly meticulous competition guidebook document parser.
-Your job is to read every single page of the attached competition guidebook PDF and extract 100% truthful, precise facts in Bahasa Indonesia.
+    const systemPromptText = `You are a strict, highly meticulous competition guidebook parser.
+Your task is to analyze the attached competition guidebook PDF file (both visually and from text) and extract 100% truthful, precise facts in Bahasa Indonesia.
 
-STRICT MANDATES FOR ACCURACY:
-1. OVERVIEW: Write a detailed, accurate overview (3-5 sentences) summarizing the exact competition background, purpose, organizer, and target audience directly written in the guidebook.
-2. TEMA UTAMA & SUB-TEMA: Extract the EXACT main theme and sub-themes stated in the document.
-3. KEY REQUIREMENTS: Extract all specific eligibility requirements, team rules, submission guidelines, and mandatory documents mentioned in the guidebook.
-4. JUDGING CRITERIA: Extract all judging criteria and their exact percentage weights written in the document (e.g. "Kreativitas & Orisinalitas (30%)", "Kesesuaian Tema (25%)", "Implementasi & Demo (25%)", "Presentasi (20%)").
-5. RUNDOWN TIMELINE: Extract EVERY SINGLE OFFICIAL EVENT / SCHEDULE / DEADLINE listed in the guidebook (Pendaftaran, Technical Meeting, Batas Pengumpulan Karya, Pengumuman Finalis, Presentasi / Pitching Final, Awarding Night, etc.). Use the exact date or date range written in the document.
+CRITICAL MANDATES FOR ABSOLUTE ACCURACY:
+1. OVERVIEW: Write a concise overview (3-5 sentences) summarizing the exact competition background, organizer, and target audience directly written in the guidebook.
+2. TEMA UTAMA & SUB-TEMA:
+   - Extract the EXACT main theme stated in the document under "TEMA" or "FOKUS UTAMA".
+   - Extract all specific sub-themes / categories listed in the document. Do NOT make up generic categories.
+3. KEY REQUIREMENTS: Extract all specific eligibility requirements, team sizes, mandatory submission files, and rules mentioned in the guidebook.
+4. JUDGING CRITERIA: Extract all judging criteria and their exact percentage weights written in the document (e.g. "Inovasi & Kesesuaian Solusi (25%)", "Implementasi Teknologi & AI (30%)", "Fungsionalitas Website (30%)", "Desain Antarmuka / UI/UX (15%)").
+5. RUNDOWN TIMELINE TABLE (CRITICAL):
+   - Look specifically for the official schedule table titled "TIMELINE PELAKSANAAN", "JADWAL KEGIATAN", or "AGENDA LOMBA".
+   - Extract EVERY row of the table line by line.
+   - For example, extract exact rows like:
+     * Pendaftaran dan Pengumpulan Gelombang 1 (31 Juli - 09 Agustus 2026)
+     * Pendaftaran dan Pengumpulan Gelombang 2 (10 Agustus - 24 Agustus 2026)
+     * Pendaftaran dan Pengumpulan Gelombang 3 (25 Agustus - 20 September 2026)
+     * Penjurian Finalis (Online) (21-22 September 2026)
+     * Pengumuman Finalis (23 September 2026)
+     * Technical Meeting Finalis (Online) (25 September 2026)
+     * Registrasi Ulang Finalis (26 September - 27 Oktober 2026)
+     * Presentasi, Seminar, Awarding (Offline) (31 Oktober 2026)
+   - Do NOT omit any rows from the table, and do NOT make up fictitious dates in January/March/May!
 
 Return ONLY a valid JSON object matching this schema:
 {
-  "summary": "Ringkasan murni kompetisi berdasarkan dokumen resmi.",
+  "summary": "Deskripsi murni kompetisi berdasarkan dokumen resmi.",
   "theme_and_subtheme": "Tema Utama: [Tema Resmi Dokumen]\nSub-Tema:\n- [Sub-Tema 1]\n- [Sub-Tema 2]",
-  "key_requirements": ["Syarat resmi 1", "Syarat resmi 2", "Syarat resmi 3"],
-  "important_dates": ["Tanggal Penting 1", "Tanggal Penting 2"],
+  "key_requirements": ["Syarat 1", "Syarat 2", "Syarat 3"],
+  "important_dates": ["Tanggal 1", "Tanggal 2"],
   "judging_criteria": ["Kriteria 1 (bobot %)", "Kriteria 2 (bobot %)"],
   "project_idea_suggestions": [
     {
       "title": "Judul Rekomendasi Ide Proyek",
       "description": "Deskripsi solusi proyek yang sangat relevan dengan tema kompetisi ini",
-      "rationale": "Alasan ide ini kuat dan sesuai kriteria penilaian"
+      "rationale": "Alasan ide ini kuat"
     }
   ],
   "rundown_timeline": [
     {
-      "title": "Nama Tahapan / Agenda Resmi Dokumen",
-      "date_str": "Rentang / Tanggal Resmi dari Guidebook",
-      "description": "Detail pelaksanaan (Online/Offline) dan instruksi kegiatan",
-      "iso_date": "ISO 8601 date string presisi (contoh: 2026-03-15T23:59:00Z)"
+      "title": "Nama Agenda Resmi dari Tabel Dokumen",
+      "date_str": "Tanggal Resmi dari Tabel Dokumen (contoh: 31 Juli - 09 Agustus 2026)",
+      "description": "Keterangan pelaksanaan (Online/Offline) atau detail kegiatan",
+      "iso_date": "ISO date string presisi (contoh: 2026-07-31T08:00:00Z)"
     }
   ]
 }`
 
     const userPromptText = `Analyze the attached guidebook PDF document for competition "${competition.name}".
 ${pdfExtractedText ? `\n--- EXTRACTED TEXT CONTENT FROM PDF GUIDEBOOK ---\n${pdfExtractedText.slice(0, 18000)}\n--- END EXTRACTED TEXT ---\n` : ''}
-Extract the real, actual overview, main theme, subthemes, key requirements, judging criteria, and ALL timeline rundown dates strictly from the PDF document content above.`
+Inspect all pages and tables in the PDF document. Extract the real, actual overview, main theme, subthemes, key requirements, judging criteria, and ALL timeline rundown dates strictly from the PDF document content above.`
 
     let parsedResult: any = null
     let modelUsed = preferred_model || 'gemini-3.6-flash'
@@ -360,20 +420,30 @@ Extract the real, actual overview, main theme, subthemes, key requirements, judg
       // Delete old auto-generated items first
       await supabase.from('rundown_items').delete().eq('competition_id', competition_id).eq('is_auto_generated', true)
 
-      const rundownInserts = parsedResult.rundown_timeline.map((item: any) => ({
-        competition_id,
-        title: item.title || 'Agenda Lomba',
-        description: item.description ? `[${item.date_str || ''}] ${item.description}` : item.date_str || '',
-        event_at: item.iso_date || new Date().toISOString(),
-        is_auto_generated: true,
-        auto_source: `guidebook_${modelUsed}`,
-      }))
+      const rundownInserts = parsedResult.rundown_timeline.map((item: any) => {
+        let validIsoDate = item.iso_date
+        const parsedIso = parseIndonesianDateToIso(item.date_str || item.title || '')
+        if (parsedIso) {
+          validIsoDate = parsedIso
+        } else if (!validIsoDate || isNaN(Date.parse(validIsoDate))) {
+          validIsoDate = new Date().toISOString()
+        }
+
+        return {
+          competition_id,
+          title: item.title || 'Agenda Lomba',
+          description: item.description ? `[${item.date_str || ''}] ${item.description}` : item.date_str || '',
+          event_at: validIsoDate,
+          is_auto_generated: true,
+          auto_source: `guidebook_${modelUsed}`,
+        }
+      })
 
       const { error: rundownErr } = await supabase.from('rundown_items').insert(rundownInserts)
       if (rundownErr) {
         addLog(`⚠️ Gagal menyisipkan agenda rundown: ${rundownErr.message}`)
       } else {
-        addLog(`✓ ${rundownInserts.length} agenda rundown timeline berhasil ditambahkan ke kalender`)
+        addLog(`✓ ${rundownInserts.length} agenda rundown timeline resmi berhasil ditambahkan ke kalender`)
       }
     }
 
