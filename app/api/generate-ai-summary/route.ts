@@ -299,7 +299,7 @@ Inspect all pages and tables in the PDF document. Extract the real, actual overv
         try {
           const modelReqStart = Date.now()
           addLog(`[5/6] Mengirimkan payload ke Gemini AI Model: ${modelName}...`)
-          const apiEndpointModel = modelName.includes('2.0') ? 'gemini-2.0-flash-exp' : 'gemini-1.5-flash'
+          const apiEndpointModel = modelName
           const parts: any[] = []
           if (pdfBase64) {
             parts.push({
