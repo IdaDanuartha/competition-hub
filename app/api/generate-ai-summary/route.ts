@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { compressPdfBuffer } from '@/lib/pdf-compressor'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 function parseIndonesianDate(dateStr: string | null | undefined, fallbackIso: string): string {
@@ -40,10 +41,19 @@ function parseIndonesianDate(dateStr: string | null | undefined, fallbackIso: st
 }
 
 export async function POST(req: Request) {
+  const startTime = Date.now()
+  const logs: string[] = []
+  const addLog = (msg: string) => {
+    const time = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    logs.push(`[${time}] ${msg}`)
+  }
+
   try {
+    addLog('Menginisialisasi analisis AI...')
     const body = await req.json().catch(() => ({}))
     const competition_id = body.competition_id || body.competitionId || body.id
     const preferred_model = body.preferred_model || body.preferredModel
+
     if (!competition_id) {
       return NextResponse.json({ error: 'competition_id required' }, { status: 400 })
     }
@@ -53,16 +63,14 @@ export async function POST(req: Request) {
     const rawOpenaiKey = process.env.OPENAI_API_KEY
     const openaiKey = rawOpenaiKey ? rawOpenaiKey.replace(/^["']|["']$/g, '') : undefined
 
-    // 1. Try server client with cookies first for RLS auth
+    // 1. Try server client with cookies first
     let supabase = await createServerClient()
-
     let { data: competition, error: compErr } = await supabase
       .from('competitions')
       .select('*')
       .eq('id', competition_id)
       .single()
 
-    // Fallback: Try admin service role client if RLS blocked cookie client
     if (compErr || !competition) {
       const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
       if (serviceRoleKey) {
@@ -77,8 +85,11 @@ export async function POST(req: Request) {
     }
 
     if (compErr || !competition) {
+      addLog('❌ Kompetisi tidak ditemukan')
       return NextResponse.json({ error: 'Competition not found' }, { status: 404 })
     }
+
+    addLog(`Ditemukan kompetisi "${competition.name}"`)
 
     // 2. Fetch latest guidebook document
     const { data: docs } = await supabase
@@ -91,85 +102,83 @@ export async function POST(req: Request) {
     const latestDoc = docs?.[0]
     let pdfBase64: string | null = null
     let pdfMimeType = 'application/pdf'
-
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dypcf3xsh'
-    const apiKey = process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY || process.env.CLOUDINARY_API_KEY
-    const apiSecret = process.env.NEXT_PUBLIC_CLOUDINARY_API_SECRET || process.env.CLOUDINARY_API_SECRET
-    const authHeader = apiKey && apiSecret ? `Basic ${Buffer.from(`${apiKey.trim()}:${apiSecret.trim()}`).toString('base64')}` : undefined
+    let pdfSizeBytes = 0
 
     if (latestDoc?.cloudinary_url) {
+      addLog(`Mengunduh file dokumen "${latestDoc.file_name}"...`)
       const docUrl = latestDoc.cloudinary_url
-
-      // Build candidate URLs to try
-      // New uploads: Supabase Storage public URLs (directly accessible)
-      // Old uploads: Cloudinary URLs (may or may not be accessible)
       const urlsToTry = [
         docUrl,
-        // Legacy Cloudinary fallbacks
         docUrl.includes('/image/upload/') ? docUrl.replace('/image/upload/', '/raw/upload/') : null,
       ].filter(Boolean) as string[]
 
       for (const candidateUrl of urlsToTry) {
         try {
-          const res = await fetch(candidateUrl)
-          console.log(`[AI Route] Tried ${candidateUrl} → HTTP ${res.status}`)
+          const res = await fetch(candidateUrl, { signal: AbortSignal.timeout(12000) })
           if (res.ok) {
             const buf = await res.arrayBuffer()
             if (buf.byteLength > 1000) {
-              pdfBase64 = Buffer.from(buf).toString('base64')
+              const comp = compressPdfBuffer(Buffer.from(buf))
+              pdfBase64 = comp.compressedBuffer.toString('base64')
               pdfMimeType = 'application/pdf'
-              console.log(`[AI Route] ✓ PDF fetched (${buf.byteLength} bytes)`)
+              pdfSizeBytes = comp.compressedBuffer.byteLength
+              comp.logs.forEach((logMsg) => addLog(logMsg))
+              addLog(`✓ PDF Siap dianalisis (${(comp.compressedSizeKb).toFixed(1)} KB)`)
               break
             }
           }
-        } catch (e) {
-          console.warn(`[AI Route] fetch error for ${candidateUrl}:`, e)
+        } catch (_e) {
+          addLog(`⚠️ Gagal fetch dari ${candidateUrl}, mencoba lokasi alternatif...`)
         }
       }
 
-      // Admin API fallback for legacy Cloudinary authenticated assets
-      if (!pdfBase64 && latestDoc.cloudinary_public_id && apiKey && apiSecret) {
-        const cleanApiSecret = (apiSecret as string).replace(/^"|"$/g, '').trim()
-        const cleanApiKey = (apiKey as string).trim()
-        const basicAuth = `Basic ${Buffer.from(`${cleanApiKey}:${cleanApiSecret}`).toString('base64')}`
-        const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dypcf3xsh'
-
-        try {
+      // Cloudinary Admin API fallback
+      if (!pdfBase64 && latestDoc.cloudinary_public_id) {
+        const apiKey = process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY || process.env.CLOUDINARY_API_KEY
+        const apiSecret = process.env.NEXT_PUBLIC_CLOUDINARY_API_SECRET || process.env.CLOUDINARY_API_SECRET
+        if (apiKey && apiSecret) {
+          const cleanApiSecret = apiSecret.replace(/^"|"$/g, '').trim()
+          const cleanApiKey = apiKey.trim()
+          const basicAuth = `Basic ${Buffer.from(`${cleanApiKey}:${cleanApiSecret}`).toString('base64')}`
+          const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dypcf3xsh'
           const cleanId = latestDoc.cloudinary_public_id.replace(/\.pdf$/i, '')
+
           for (const rType of ['raw', 'image']) {
-            const resourceUrl = `https://api.cloudinary.com/v1_1/${cloudName}/resources/${rType}/upload/${encodeURIComponent(cleanId)}`
-            const res = await fetch(resourceUrl, { headers: { Authorization: basicAuth } })
-            console.log(`[AI Route] Cloudinary Admin API: HTTP ${res.status}`)
-            if (res.ok) {
-              const details = await res.json()
-              if (details.secure_url) {
-                const downloadRes = await fetch(details.secure_url)
-                if (downloadRes.ok) {
-                  const buf = await downloadRes.arrayBuffer()
-                  if (buf.byteLength > 1000) {
-                    pdfBase64 = Buffer.from(buf).toString('base64')
-                    pdfMimeType = 'application/pdf'
-                    console.log(`[AI Route] ✓ Cloudinary Admin API PDF (${buf.byteLength} bytes)`)
-                    break
+            try {
+              const resourceUrl = `https://api.cloudinary.com/v1_1/${cloudName}/resources/${rType}/upload/${encodeURIComponent(cleanId)}`
+              const res = await fetch(resourceUrl, { headers: { Authorization: basicAuth }, signal: AbortSignal.timeout(10000) })
+              if (res.ok) {
+                const details = await res.json()
+                if (details.secure_url) {
+                  const downloadRes = await fetch(details.secure_url, { signal: AbortSignal.timeout(12000) })
+                  if (downloadRes.ok) {
+                    const buf = await downloadRes.arrayBuffer()
+                    if (buf.byteLength > 1000) {
+                      const comp = compressPdfBuffer(Buffer.from(buf))
+                      pdfBase64 = comp.compressedBuffer.toString('base64')
+                      pdfMimeType = 'application/pdf'
+                      pdfSizeBytes = comp.compressedBuffer.byteLength
+                      comp.logs.forEach((logMsg) => addLog(logMsg))
+                      addLog(`✓ Cloudinary Admin API: PDF terkompresi & siap (${(comp.compressedSizeKb).toFixed(1)} KB)`)
+                      break
+                    }
                   }
                 }
               }
+            } catch (_err) {
+              // fallback
             }
           }
-        } catch (err) {
-          console.warn('[AI Route] Cloudinary Admin API fallback failed:', err)
         }
       }
-
-      if (!pdfBase64) {
-        console.error('[AI Route] All PDF download attempts failed for URL:', docUrl)
-      }
+    } else {
+      addLog('Tanda: Tidak ada file dokumen PDF attached, analisis dilakukan berbasis metadata kompetisi')
     }
 
-
     if (!pdfBase64 && latestDoc) {
+      addLog('❌ Gagal mengunduh isi file PDF dari storage')
       return NextResponse.json(
-        { error: 'Gagal mengunduh file PDF dari Cloudinary untuk dianalisis AI. Silakan periksa kredensial Cloudinary atau unggah ulang file guidebook.' },
+        { error: 'Gagal mengunduh file PDF untuk dianalisis. Silakan periksa atau unggah ulang file guidebook.' },
         { status: 400 }
       )
     }
@@ -181,55 +190,16 @@ CRITICAL MANDATES FOR ABSOLUTE ACCURACY:
 2. EXTRACT OVERVIEW, TEMA UTAMA, SUB-TEMA, AND TIMELINE STRICTLY AND EXCLUSIVELY FROM THE TEXT INSIDE THE ATTACHED DOCUMENT.
    DO NOT INVENT, GUESS, OR USE GENERIC PLACEHOLDERS!
 
-   For example, if Section B / Tema Lomba in the PDF states:
-   TEMA: "Driving Sustainability in Nature Through Digital Innovation"
-   SUBTEMA:
-   - Green Economy: Berfokus pada pengembangan inovasi digital...
-   - Smart Small Island: Menitikberatkan pada penerapan teknologi digital...
-   - Smart Agroindustry and Logistic System: Berfokus pada optimalisasi...
-
-   You MUST output:
-   summary: Deskripsi murni dari Section A Deskripsi Lomba di PDF.
-   theme_and_subtheme:
-   Tema Utama: Driving Sustainability in Nature Through Digital Innovation
-   Sub-Tema:
-   - Green Economy: Berfokus pada pengembangan inovasi digital yang mendukung pertumbuhan ekonomi berkelanjutan dengan tetap menjaga kelestarian lingkungan.
-   - Smart Small Island: Menitikberatkan pada penerapan teknologi digital untuk mendukung pembangunan berkelanjutan di wilayah kepulauan kecil.
-   - Smart Agroindustry and Logistic System: Berfokus pada optimalisasi proses produksi, pengolahan, penyimpanan, dan distribusi hasil agro melalui integrasi sistem digital.
-
-   DO NOT output generic subthemes like "Kecerdasan Buatan", "IoT", "Keamanan Siber" unless they are explicitly written in the PDF!
-
-3. LOOK FOR THE OFFICIAL TIMELINE TABLE / SECTION (e.g. "K. TIMELINE LOMBA", "Jadwal", "Agenda", or any table with columns: Kegiatan, Tanggal, Keterangan).
-   EXTRACT EVERY SINGLE ROW FROM THE OFFICIAL TIMELINE TABLE EXACTLY AS WRITTEN IN THE DOCUMENT.
-   For example, if the table inside the PDF contains:
-   - Pendaftaran: 1 Juni – 5 Agustus 2026 (Keterangan: Online)
-   - Pengumpulan Karya: 16 Juli – 5 Agustus 2026 (Keterangan: Online)
-   - Penilaian Karya: 6 Agustus – 10 Agustus 2026 (Keterangan: Online)
-   - Pengumuman Finalis: 11 Agustus 2026 (Keterangan: Online)
-   - Technical Meeting Finalis: 12 Agustus 2026 (Keterangan: Online)
-   - Final Presentasi: 22 Agustus 2026 (Keterangan: Offline)
-   - Seminar, Expo & Pengumuman: 23 Agustus 2026 (Keterangan: Offline)
-
-   You MUST extract EXACTLY those rows and dates!
-
-4. For each item in rundown_timeline:
-   - title: Exact row name under "Kegiatan" (e.g. "Pendaftaran", "Pengumpulan Karya", "Penilaian Karya", "Pengumuman Finalis", "Technical Meeting Finalis", "Final Presentasi", "Seminar, Expo & Pengumuman").
-   - date_str: Exact text under "Tanggal" (e.g. "1 Juni – 5 Agustus 2026", "11 Agustus 2026", "22 Agustus 2026").
-   - description: Text under "Keterangan" or details (e.g. "Online", "Offline").
-   - iso_date: Precise ISO 8601 timestamp string for the start date (e.g. "2026-06-01T08:00:00.000Z", "2026-08-11T08:00:00.000Z", "2026-08-22T08:00:00.000Z").
-
-Provide ALL text in Bahasa Indonesia.
-
 Return ONLY a valid JSON object with EXACTLY these keys:
 {
   "summary": "Deskripsi murni kompetisi dari Section A dokumen.",
-  "theme_and_subtheme": "Tema Utama: Driving Sustainability in Nature Through Digital Innovation\nSub-Tema:\n- Green Economy: ...\n- Smart Small Island: ...\n- Smart Agroindustry and Logistic System: ...",
+  "theme_and_subtheme": "Tema Utama: ...\nSub-Tema:\n- ...",
   "key_requirements": ["Persyaratan 1", "Persyaratan 2"],
   "important_dates": ["Tanggal 1", "Tanggal 2"],
   "judging_criteria": ["Kriteria 1 (bobot %)"],
   "project_idea_suggestions": [
     {
-      "title": "Judul Ide Proyek Spesifik Berdasarkan Subtema Dokumen",
+      "title": "Judul Ide Proyek Spesifik",
       "description": "Cara kerja proyek",
       "rationale": "Alasan ide ini kompetitif"
     }
@@ -244,20 +214,20 @@ Return ONLY a valid JSON object with EXACTLY these keys:
   ]
 }`
 
-    const userPromptText = `Analyze all pages of the attached PDF document for competition "${competition.name}".
-Extract Theme & Subthemes strictly from Section B, Timeline rows strictly from Section K table, and Overview strictly from Section A.`
+    const userPromptText = `Analyze all pages of the attached PDF document for competition "${competition.name}".`
 
     let parsedResult: any = null
     let modelUsed = preferred_model || 'gemini-3.6-flash'
 
-    let geminiModels = ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash', 'gemini-1.5-flash']
+    let geminiModels = ['gemini-3.6-flash', 'gemini-2.5-flash']
     if (preferred_model && preferred_model.startsWith('gemini')) {
       geminiModels = [preferred_model, ...geminiModels.filter((m) => m !== preferred_model)]
     }
 
-    // Try OpenAI first if requested
+    // Try OpenAI if requested
     if (preferred_model === 'gpt-4o-mini' && openaiKey) {
       try {
+        addLog('Mengirimkan prompt & dokumen ke OpenAI GPT-4o Mini...')
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -272,6 +242,7 @@ Extract Theme & Subthemes strictly from Section B, Timeline rows strictly from S
             ],
             response_format: { type: 'json_object' },
           }),
+          signal: AbortSignal.timeout(20000),
         })
 
         if (res.ok) {
@@ -280,10 +251,11 @@ Extract Theme & Subthemes strictly from Section B, Timeline rows strictly from S
           if (rawText) {
             parsedResult = JSON.parse(rawText)
             modelUsed = 'gpt-4o-mini'
+            addLog('✓ GPT-4o Mini selesai memproses analisis')
           }
         }
       } catch (_e) {
-        console.warn('OpenAI preferred model failed, falling back to Gemini...')
+        addLog('⚠️ OpenAI GPT-4o Mini gagal, beralih ke Gemini...')
       }
     }
 
@@ -291,6 +263,8 @@ Extract Theme & Subthemes strictly from Section B, Timeline rows strictly from S
     if (!parsedResult && geminiKey) {
       for (const modelName of geminiModels) {
         try {
+          addLog(`Mengirimkan data ke model ${modelName}...`)
+          const apiEndpointModel = modelName.includes('2.0') ? 'gemini-2.0-flash-exp' : 'gemini-1.5-flash'
           const parts: any[] = []
           if (pdfBase64) {
             parts.push({
@@ -300,7 +274,7 @@ Extract Theme & Subthemes strictly from Section B, Timeline rows strictly from S
           parts.push({ text: userPromptText })
 
           const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/${apiEndpointModel}:generateContent?key=${geminiKey}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -309,6 +283,7 @@ Extract Theme & Subthemes strictly from Section B, Timeline rows strictly from S
                 contents: [{ parts }],
                 generationConfig: { responseMimeType: 'application/json' },
               }),
+              signal: AbortSignal.timeout(20000),
             }
           )
 
@@ -318,18 +293,22 @@ Extract Theme & Subthemes strictly from Section B, Timeline rows strictly from S
             if (rawText) {
               parsedResult = JSON.parse(rawText)
               modelUsed = modelName
+              addLog(`✓ ${modelName} berhasil memproses analisis dokumen`)
               break
             }
+          } else {
+            addLog(`⚠️ Model ${modelName} mengembalikan HTTP ${res.status}`)
           }
-        } catch (e) {
-          console.warn(`Gemini model ${modelName} failed in API route:`, e)
+        } catch (e: any) {
+          addLog(`⚠️ Model ${modelName} timeout/error: ${e?.message || 'Error'}`)
         }
       }
     }
 
-    // Fallback to OpenAI GPT if not preferred and Gemini failed
+    // OpenAI fallback
     if (!parsedResult && openaiKey) {
       try {
+        addLog('Mencoba fallback akhir ke OpenAI GPT-4o Mini...')
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -344,6 +323,7 @@ Extract Theme & Subthemes strictly from Section B, Timeline rows strictly from S
             ],
             response_format: { type: 'json_object' },
           }),
+          signal: AbortSignal.timeout(20000),
         })
 
         if (res.ok) {
@@ -352,18 +332,21 @@ Extract Theme & Subthemes strictly from Section B, Timeline rows strictly from S
           if (rawText) {
             parsedResult = JSON.parse(rawText)
             modelUsed = 'gpt-4o-mini'
+            addLog('✓ Fallback GPT-4o Mini berhasil')
           }
         }
       } catch (_e) {
-        console.error('OpenAI fallback failed in API route')
+        addLog('❌ OpenAI fallback gagal')
       }
     }
 
     if (!parsedResult) {
-      return NextResponse.json({ error: 'AI generation failed' }, { status: 400 })
+      addLog('❌ Semua model AI gagal merespon')
+      return NextResponse.json({ error: 'AI generation failed', logs }, { status: 400 })
     }
 
     // Save AI summary to DB
+    addLog('Menyimpan hasil analisis & ringkasan ke database...')
     const { data: summaryRow, error: saveErr } = await supabase
       .from('ai_summaries')
       .upsert(
@@ -385,14 +368,7 @@ Extract Theme & Subthemes strictly from Section B, Timeline rows strictly from S
 
     if (saveErr) throw saveErr
 
-    // Clear ALL auto-generated rundowns for this competition
-    await supabase
-      .from('rundown_items')
-      .delete()
-      .eq('competition_id', competition_id)
-      .eq('is_auto_generated', true)
-
-    // Insert new rundown items from AI analysis
+    // Insert new rundown items
     const rundownTimeline: any[] = parsedResult.rundown_timeline ?? []
     const importantDates: string[] = parsedResult.important_dates ?? []
     const fallbackIso = competition.submission_deadline || new Date().toISOString()
@@ -434,11 +410,23 @@ Extract Theme & Subthemes strictly from Section B, Timeline rows strictly from S
     }
 
     if (newRundowns.length > 0) {
+      await supabase.from('rundown_items').delete().eq('competition_id', competition_id).eq('is_auto_generated', true)
       await supabase.from('rundown_items').insert(newRundowns)
+      addLog(`✓ Memperbarui ${newRundowns.length} agenda rundown otomatis`)
     }
 
-    return NextResponse.json(summaryRow)
+    const durationMs = Date.now() - startTime
+    addLog(`🏁 Analisis Selesai! (Durasi: ${(durationMs / 1000).toFixed(2)} detik)`)
+
+    return NextResponse.json({
+      ...summaryRow,
+      execution_log: logs,
+      execution_time_ms: durationMs,
+      pdf_size_kb: pdfSizeBytes ? Math.round(pdfSizeBytes / 1024) : 0,
+      model_used: modelUsed,
+    })
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    addLog(`❌ Error: ${err.message}`)
+    return NextResponse.json({ error: err.message, logs }, { status: 500 })
   }
 }

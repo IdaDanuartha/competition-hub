@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Sparkles, RefreshCw, Copy, Check, Cpu, ChevronDown, ChevronUp, Tag, Layers } from 'lucide-react'
+import { Sparkles, RefreshCw, Copy, Check, ChevronDown, ChevronUp, Tag, Layers, Terminal } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -9,9 +9,16 @@ import { PortfolioMatchBadge } from '@/components/portfolio/PortfolioMatchBadge'
 import { usePortfolio } from '@/hooks/usePortfolio'
 import { matchPortfolioEntries } from '@/lib/ai-summary'
 import type { AiSummary } from '@/lib/types/database'
+import { ModelSelector } from '@/components/ui/ModelSelector'
+
+interface ExtendedAiSummary extends AiSummary {
+  execution_log?: string[]
+  execution_time_ms?: number
+  pdf_size_kb?: number
+}
 
 interface AiSummaryCardProps {
-  summary: AiSummary | null
+  summary: ExtendedAiSummary | null
   isLoading: boolean
   isGenerating?: boolean
   onRegenerate: (model?: string) => void
@@ -19,9 +26,7 @@ interface AiSummaryCardProps {
 
 const MODEL_OPTIONS = [
   { value: 'gemini-3.6-flash', label: 'gemini-3.6-flash (Fast & Smart)' },
-  { value: 'gemini-3.5-flash-lite', label: 'gemini-3.5-flash-lite (Lightweight)' },
   { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash' },
-  { value: 'gemini-1.5-flash', label: 'gemini-1.5-flash' },
   { value: 'gpt-4o-mini', label: 'gpt-4o-mini (OpenAI)' },
 ]
 
@@ -32,12 +37,10 @@ function parseThemeString(text: string) {
   let subTheme = ''
   const points: string[] = []
 
-  // Check line-by-line
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
   if (lines.length > 1) {
     for (const line of lines) {
       if (/^(?:poin|fokus|kategori)\s*(?:\/|\&|dan)?\s*sdgs?\s*:?/i.test(line) || line.trim().endsWith(':')) {
-        // Skip header line like "Poin / Fokus SDGs:"
         continue
       }
 
@@ -54,7 +57,6 @@ function parseThemeString(text: string) {
     }
   }
 
-  // Fallback pattern extraction if not parsed by line
   if (!mainTheme && !subTheme) {
     const mainMatch = text.match(/(?:Tema Utama|Tema)\s*:\s*([^.\n]+|\"[^\"]+\")/i)
     const subMatch = text.match(/(?:Sub-Tema|Subtema)\s*(?:Hackathon)?\s*:\s*([^.\n]+|\"[^\"]+\"|'[^']+')/i)
@@ -62,12 +64,10 @@ function parseThemeString(text: string) {
     if (mainMatch) mainTheme = mainMatch[1].trim()
     if (subMatch) subTheme = subMatch[1].trim()
 
-    // Quotes extraction fallback e.g. "Main Theme" dengan sub-tema "Sub Theme"
     const quotes = Array.from(text.matchAll(/["“]([^"”]+)["”]/g)).map((m) => m[1].trim())
     if (!mainTheme && quotes.length >= 1) mainTheme = quotes[0]
     if (!subTheme && quotes.length >= 2) subTheme = quotes[1]
 
-    // SDG points fallback (excluding "poin / fokus")
     const sdgMatches = Array.from(text.matchAll(/(SDG\s*\d+\s*:[^,.)\n]*|SDG\s*\d+\s*(?:\([^)]+\))?)/gi))
     for (const m of sdgMatches) {
       const clean = m[1].trim()
@@ -96,7 +96,6 @@ function FormattedThemeFocus({ text }: { text: string }) {
 
   return (
     <div className="mt-2 space-y-3">
-      {/* Card 1: Tema Utama */}
       {mainTheme && (
         <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 shadow-2xs dark:border-amber-900/60 dark:bg-amber-950/30">
           <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-amber-700 dark:text-amber-400 uppercase">
@@ -109,7 +108,6 @@ function FormattedThemeFocus({ text }: { text: string }) {
         </div>
       )}
 
-      {/* Card 2: Sub-Tema */}
       {subTheme && (
         <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3.5 shadow-2xs dark:border-sky-900/60 dark:bg-sky-950/30">
           <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-sky-700 dark:text-sky-400 uppercase">
@@ -122,7 +120,6 @@ function FormattedThemeFocus({ text }: { text: string }) {
         </div>
       )}
 
-      {/* Poin / Kategori Fokus Pills */}
       {points.length > 0 && (
         <div className="pt-1 space-y-1.5">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
@@ -148,6 +145,7 @@ function FormattedThemeFocus({ text }: { text: string }) {
 export function AiSummaryCard({ summary, isLoading, isGenerating, onRegenerate }: AiSummaryCardProps) {
   const [copied, setCopied] = useState(false)
   const [isExpanded, setIsExpanded] = useState(true)
+  const [showLogs, setShowLogs] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('ai-summary-model') || 'gemini-3.6-flash'
@@ -156,8 +154,20 @@ export function AiSummaryCard({ summary, isLoading, isGenerating, onRegenerate }
   })
   const { data: portfolio = [] } = usePortfolio()
 
+  const [modelStatuses, setModelStatuses] = useState<Record<string, { status: string; message: string }>>({})
+
   useEffect(() => {
-    // Only set from summary if user hasn't saved a preference yet
+    fetch('/api/ai-models-status')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.models) {
+          setModelStatuses(data.models)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
     if (summary?.model_used && !localStorage.getItem('ai-summary-model')) {
       const cleanModelName = summary.model_used.split(' ')[0]
       setSelectedModel(cleanModelName)
@@ -196,6 +206,24 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
 
   const showSkeleton = isLoading || isGenerating
 
+  // Current selected model status indicator
+  const currentStatus = modelStatuses[selectedModel]?.status || 'active'
+  const statusColor =
+    currentStatus === 'active'
+      ? 'bg-emerald-500'
+      : currentStatus === 'rate_limited'
+      ? 'bg-amber-500'
+      : currentStatus === 'key_missing'
+      ? 'bg-zinc-400'
+      : 'bg-red-500'
+
+  // Default execution logs representation if absent
+  const executionLogs = summary?.execution_log ?? [
+    `[${summary?.updated_at ? new Date(summary.updated_at).toLocaleTimeString('id-ID') : 'Terbaru'}] Inisialisasi analisis AI`,
+    `[Model Status] ${selectedModel}: ${modelStatuses[selectedModel]?.message || 'Aktif'}`,
+    `[Status] Analisis tersimpan di database`,
+  ]
+
   return (
     <Card className="space-y-4 p-4 sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-zinc-200 pb-3 dark:border-zinc-800">
@@ -203,28 +231,28 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
           <Sparkles className="h-5 w-5 text-amber-500 shrink-0" />
           <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">AI Summary &amp; Advice</h3>
 
-          {/* Model Selector Dropdown */}
-          <div className="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50/80 px-2.5 py-1 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900/80 dark:hover:bg-zinc-800/80">
-            <Cpu className="h-3.5 w-3.5 text-sky-500" />
-            <select
-              value={selectedModel}
-              onChange={(e) => handleModelChange(e.target.value)}
-              disabled={isGenerating}
-              className="bg-transparent text-xs font-medium text-zinc-800 dark:text-zinc-200 outline-none cursor-pointer"
-              aria-label="Select AI model"
-            >
-              {MODEL_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value} className="bg-white text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Custom Model Selector */}
+          <ModelSelector
+            options={MODEL_OPTIONS}
+            selectedModel={selectedModel}
+            modelStatuses={modelStatuses as any}
+            onSelectModel={handleModelChange}
+            disabled={isGenerating}
+          />
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {summary && !showSkeleton && (
             <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowLogs((prev) => !prev)}
+                className={showLogs ? 'bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100' : ''}
+              >
+                <Terminal className="h-3.5 w-3.5" />
+                <span>Logs AI</span>
+              </Button>
               <Button variant="ghost" size="sm" onClick={handleCopy}>
                 {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
                 {copied ? 'Copied' : 'Copy'}
@@ -246,6 +274,23 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
           </Button>
         </div>
       </div>
+
+      {/* AI Execution Logs Accordion */}
+      {showLogs && summary && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3.5 font-mono text-xs text-emerald-400 space-y-2 animate-in fade-in duration-150">
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-2 text-[11px] text-zinc-400">
+            <span className="flex items-center gap-1.5 text-zinc-200 font-semibold">
+              <Terminal className="h-3.5 w-3.5 text-emerald-400" /> Execution Log (AI Engine)
+            </span>
+            <span>Model: {summary.model_used || selectedModel}</span>
+          </div>
+          <div className="max-h-40 overflow-y-auto space-y-1 text-[11px] leading-relaxed text-zinc-300">
+            {executionLogs.map((log, i) => (
+              <p key={i} className="whitespace-pre-wrap">{log}</p>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showSkeleton ? (
         <div className="space-y-4 py-2">

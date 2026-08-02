@@ -11,6 +11,7 @@ import { ShareableExportAction } from '@/components/detail/ShareableExportAction
 import { DocumentsSection } from '@/components/detail/DocumentsSection'
 import { LinksSection } from '@/components/detail/LinksSection'
 import { AiSummaryCard } from '@/components/detail/AiSummaryCard'
+import { CompetitionChatDrawer } from '@/components/detail/CompetitionChatDrawer'
 import { RundownList } from '@/components/detail/RundownList'
 import { RundownItemModal } from '@/components/detail/RundownItemModal'
 import { NotificationLog } from '@/components/detail/NotificationLog'
@@ -166,6 +167,8 @@ export default function CompetitionDetailPage({ params }: { params: Promise<{ id
           </section>
         </div>
       )}
+
+      <CompetitionChatDrawer competitionId={id} competitionName={competition.name} />
     </div>
   )
 }

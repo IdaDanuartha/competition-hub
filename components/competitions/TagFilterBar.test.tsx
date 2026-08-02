@@ -22,21 +22,21 @@ const rows = [
 describe('TagFilterBar', () => {
   it('lists tag options derived from the competitions', () => {
     render(<TagFilterBar competitions={rows} value={{ status: [], tags: [], team: null }} onChange={() => {}} />)
-    expect(screen.getByRole('checkbox', { name: 'Hackathon' })).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: 'UI/UX Design' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hackathon' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'UI/UX Design' })).toBeInTheDocument()
   })
 
   it('calls onChange with the toggled tag added', async () => {
     const onChange = vi.fn()
     render(<TagFilterBar competitions={rows} value={{ status: [], tags: [], team: null }} onChange={onChange} />)
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Hackathon' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Hackathon' }))
     expect(onChange).toHaveBeenCalledWith({ status: [], tags: ['hackathon'], team: null })
   })
 
   it('calls onChange with the tag removed when toggled off', async () => {
     const onChange = vi.fn()
     render(<TagFilterBar competitions={rows} value={{ status: [], tags: ['hackathon'], team: null }} onChange={onChange} />)
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Hackathon' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Hackathon' }))
     expect(onChange).toHaveBeenCalledWith({ status: [], tags: [], team: null })
   })
 })

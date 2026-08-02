@@ -1,37 +1,33 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor, act } from '@testing-library/react'
+import { renderHook, act } from '@testing-library/react'
 import { useUploadGuidebook } from './useUploadGuidebook'
 
-const functionsInvoke = vi.fn().mockResolvedValue({
-  data: { signature: 'sig', timestamp: 123, apiKey: 'key', cloudName: 'cloud', folder: 'competition-hub/comp-1' },
-  error: null,
-})
-
-const insert = vi.fn().mockResolvedValue({ error: null })
-const dbFrom = vi.fn().mockReturnValue({ insert })
+const uploadMock = vi.fn().mockResolvedValue({ data: { path: 'comp-1/123_guidebook.pdf' }, error: null })
+const getPublicUrlMock = vi.fn().mockReturnValue({ data: { publicUrl: 'https://test.supabase.co/storage/v1/object/public/guidebooks/comp-1/123_guidebook.pdf' } })
+const insertMock = vi.fn().mockResolvedValue({ error: null })
+const fromMock = vi.fn().mockReturnValue({ insert: insertMock })
 
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
-    functions: { invoke: functionsInvoke },
-    from: dbFrom,
+    storage: {
+      from: () => ({
+        upload: uploadMock,
+        getPublicUrl: getPublicUrlMock,
+      }),
+    },
+    from: fromMock,
   }),
 }))
 
 describe('useUploadGuidebook', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    functionsInvoke.mockResolvedValue({
-      data: { signature: 'sig', timestamp: 123, apiKey: 'key', cloudName: 'cloud', folder: 'competition-hub/comp-1' },
-      error: null,
-    })
-    insert.mockResolvedValue({ error: null })
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ public_id: 'competition-hub/comp-1/guidebook', secure_url: 'https://res.cloudinary.com/demo/image/upload/guidebook.pdf' }),
-    }) as unknown as typeof fetch
+    uploadMock.mockResolvedValue({ data: { path: 'comp-1/123_guidebook.pdf' }, error: null })
+    getPublicUrlMock.mockReturnValue({ data: { publicUrl: 'https://test.supabase.co/storage/v1/object/public/guidebooks/comp-1/123_guidebook.pdf' } })
+    insertMock.mockResolvedValue({ error: null })
   })
 
-  it('requests signature and uploads file to Cloudinary, then inserts a document row', async () => {
+  it('uploads file to Supabase Storage and inserts a document row', async () => {
     const { result } = renderHook(() => useUploadGuidebook('comp-1'))
     const file = new File([new Uint8Array(10)], 'guidebook.pdf', { type: 'application/pdf' })
 
@@ -39,26 +35,22 @@ describe('useUploadGuidebook', () => {
       await result.current.upload(file)
     })
 
-    expect(functionsInvoke).toHaveBeenCalledWith('cloudinary-sign', { body: { competitionId: 'comp-1' } })
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('api.cloudinary.com'), expect.any(Object))
-    expect(dbFrom).toHaveBeenCalledWith('competition_documents')
-    expect(insert).toHaveBeenCalledWith(
+    expect(uploadMock).toHaveBeenCalledWith(expect.stringContaining('comp-1/'), file, expect.any(Object))
+    expect(fromMock).toHaveBeenCalledWith('competition_documents')
+    expect(insertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         competition_id: 'comp-1',
         file_name: 'guidebook.pdf',
-        cloudinary_public_id: 'competition-hub/comp-1/guidebook',
-        cloudinary_url: 'https://res.cloudinary.com/demo/image/upload/guidebook.pdf',
+        cloudinary_public_id: 'comp-1/123_guidebook.pdf',
+        cloudinary_url: 'https://test.supabase.co/storage/v1/object/public/guidebooks/comp-1/123_guidebook.pdf',
         doc_type: 'guidebook',
       })
     )
-    await waitFor(() => expect(result.current.status).toBe('done'))
+    expect(result.current.status).toBe('done')
   })
 
-  it('sets status to error when Cloudinary upload fails', async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: false,
-      json: async () => ({ error: { message: 'Cloudinary Upload Error' } }),
-    }) as unknown as typeof fetch
+  it('sets status to error when storage upload fails', async () => {
+    uploadMock.mockResolvedValueOnce({ data: null, error: { message: 'Storage Error' } })
 
     const { result } = renderHook(() => useUploadGuidebook('comp-1'))
     const file = new File([new Uint8Array(10)], 'guidebook.pdf', { type: 'application/pdf' })
@@ -68,6 +60,6 @@ describe('useUploadGuidebook', () => {
     })
 
     expect(result.current.status).toBe('error')
-    expect(result.current.error).toBe('Cloudinary Upload Error')
+    expect(result.current.error).toBe('Storage Error')
   })
 })

@@ -1,8 +1,14 @@
 // components/competitions/CompetitionTable.test.tsx
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { CompetitionTable } from './CompetitionTable'
 import type { Competition } from '@/lib/types/database'
+
+vi.mock('@/hooks/useCompetitions', () => ({
+  useUpdateCompetitionStatus: () => ({
+    mutate: vi.fn(),
+  }),
+}))
 
 function comp(overrides: Partial<Competition>): Competition {
   return {

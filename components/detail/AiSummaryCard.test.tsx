@@ -15,7 +15,7 @@ const mockSummary: AiSummary = {
   project_idea_suggestions: [
     { title: 'Idea Alpha', description: 'Web app for tracking', rationale: 'Matches innovation criteria' }
   ],
-  model_used: 'gemini-2.5-flash',
+  model_used: 'gemini-3.6-flash',
   created_at: '',
   updated_at: '',
 }
@@ -28,7 +28,7 @@ describe('AiSummaryCard', () => {
   it('renders summary details and model badge', () => {
     render(<AiSummaryCard summary={mockSummary} isLoading={false} onRegenerate={() => {}} />)
     expect(screen.getByText(/This competition is about building AI tools./i)).toBeInTheDocument()
-    expect(screen.getByText(/gemini-2.5-flash/i)).toBeInTheDocument()
+    expect(screen.getByText(/gemini-3.6-flash/i)).toBeInTheDocument()
     expect(screen.getByText(/Idea Alpha/i)).toBeInTheDocument()
   })
 

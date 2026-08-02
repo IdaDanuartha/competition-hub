@@ -15,13 +15,13 @@ describe('CompetitionForm', () => {
   it('submits parsed values when the form is valid', async () => {
     const onSubmit = vi.fn()
     render(<CompetitionForm onSubmit={onSubmit} submitLabel="Create" />)
-    await userEvent.type(screen.getByLabelText(/^name/i), 'BYTESFEST 2026')
+    await userEvent.type(screen.getByLabelText(/competition name/i), 'BYTESFEST 2026')
     await userEvent.click(screen.getByRole('button', { name: 'Create' }))
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ name: 'BYTESFEST 2026' }))
   })
 
   it('pre-fills fields from defaultValues', () => {
     render(<CompetitionForm onSubmit={() => {}} submitLabel="Save" defaultValues={{ name: 'Existing Comp' }} />)
-    expect(screen.getByLabelText(/^name/i)).toHaveValue('Existing Comp')
+    expect(screen.getByLabelText(/competition name/i)).toHaveValue('Existing Comp')
   })
 })

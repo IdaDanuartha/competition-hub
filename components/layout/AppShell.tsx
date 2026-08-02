@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Settings } from 'lucide-react'
+import { LayoutDashboard, Settings, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { ThemeToggle } from '@/components/settings/ThemeToggle'
 import { OfflineBanner } from './OfflineBanner'
@@ -26,6 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const isDashboardActive = pathname === '/dashboard' || pathname.startsWith('/competitions')
   const isSettingsActive = pathname === '/settings'
+  const isCompetitionDetailPage = pathname.startsWith('/competitions/')
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-black">
@@ -71,13 +72,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Main Content Area */}
       <main className="flex-1 px-4 py-4 sm:px-6 pb-24 md:pb-8">{children}</main>
 
-      {/* Mobile Fixed Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-zinc-200 bg-white/95 px-2 py-2 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/95 md:hidden">
+      {/* Mobile Fixed Bottom Navigation Bar with Elevated Center FAB */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-zinc-200/80 bg-white/95 px-4 py-2 backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-950/95 md:hidden">
         <Link
           href="/dashboard"
           className={cn(
-            'flex flex-1 flex-col items-center gap-1 py-1 text-[11px] font-medium transition-colors',
-            isDashboardActive
+            'flex flex-col items-center gap-1 py-1 text-[11px] font-medium transition-colors w-20',
+            isDashboardActive && !isCompetitionDetailPage
               ? 'text-sky-600 dark:text-sky-400'
               : 'text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200'
           )}
@@ -85,10 +86,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <LayoutDashboard className="h-5 w-5" />
           <span>Dashboard</span>
         </Link>
+
+        {/* Elevated Center Circular Button (Tanya AI) */}
+        <div className="relative flex flex-col items-center justify-center -mt-6">
+          <button
+            type="button"
+            onClick={() => {
+              if (isCompetitionDetailPage) {
+                window.dispatchEvent(new CustomEvent('open-ai-chat'))
+              } else {
+                // If not on detail page, navigate to dashboard or show prompt
+                window.location.href = '/dashboard'
+              }
+            }}
+            className="flex h-13 w-13 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-500 text-white shadow-lg shadow-emerald-600/30 border-4 border-zinc-50 dark:border-zinc-950 hover:scale-105 active:scale-95 transition-all group cursor-pointer"
+            aria-label="Tanya AI Guidebook"
+          >
+            <Sparkles className="h-6 w-6 text-white group-hover:rotate-12 transition-transform animate-pulse" />
+          </button>
+          <span className="mt-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+            {isCompetitionDetailPage ? 'Tanya AI' : 'AI Hub'}
+          </span>
+        </div>
+
         <Link
           href="/settings"
           className={cn(
-            'flex flex-1 flex-col items-center gap-1 py-1 text-[11px] font-medium transition-colors',
+            'flex flex-col items-center gap-1 py-1 text-[11px] font-medium transition-colors w-20',
             isSettingsActive
               ? 'text-sky-600 dark:text-sky-400'
               : 'text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200'
