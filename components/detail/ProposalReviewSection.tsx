@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { FileSearch, Sparkles, CheckCircle2, AlertTriangle, Lightbulb, Award, Loader2, FileText, ChevronDown, ChevronUp, History } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
