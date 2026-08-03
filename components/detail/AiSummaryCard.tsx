@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Sparkles, RefreshCw, Copy, Check, ChevronDown, ChevronUp, Tag, Layers, Terminal, Loader2 } from 'lucide-react'
+import { Sparkles, RefreshCw, Copy, Check, ChevronDown, ChevronUp, Tag, Layers, Terminal, Loader2, Wallet } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -10,6 +10,7 @@ import { usePortfolio } from '@/hooks/usePortfolio'
 import { matchPortfolioEntries } from '@/lib/ai-summary'
 import type { AiSummary } from '@/lib/types/database'
 import { ModelSelector } from '@/components/ui/ModelSelector'
+
 
 interface AiSummaryCardProps {
   summary: AiSummary | null
@@ -175,6 +176,35 @@ function FormattedThemeFocus({ text }: { text: string }) {
     </div>
   )
 }
+
+function FormattedRegistrationFee({ text }: { text: string }) {
+  if (!text || !text.trim()) return null
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 shadow-2xs dark:border-emerald-900/60 dark:bg-emerald-950/30">
+      <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-emerald-700 dark:text-emerald-400 uppercase">
+        <Wallet className="h-3.5 w-3.5" />
+        <span>Biaya Pendaftaran / Registration Fee</span>
+      </div>
+      {lines.length > 1 ? (
+        <ul className="mt-2 space-y-1.5">
+          {lines.map((line, idx) => (
+            <li key={idx} className="flex items-start gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+              <span>{line.replace(/^(?:\d+\.|\-|\*)\s*/, '')}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50 text-sm sm:text-base leading-snug">
+          {text}
+        </p>
+      )}
+    </div>
+  )
+}
+
 
 export function AiSummaryCard({ summary, isLoading, isGenerating, onRegenerate }: AiSummaryCardProps) {
   const [copied, setCopied] = useState(false)
@@ -421,7 +451,12 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
                 </div>
               )}
 
+              {summary.registration_fee && (
+                <FormattedRegistrationFee text={summary.registration_fee} />
+              )}
+
               <PortfolioMatchBadge matches={matches} />
+
 
               {summary.key_requirements.length > 0 && (
                 <div>

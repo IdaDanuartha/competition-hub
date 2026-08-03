@@ -107,6 +107,7 @@ export type AiSummary = {
   important_dates: string[]
   judging_criteria: string[]
   theme_and_subtheme: string | null
+  registration_fee?: string | null
   project_idea_suggestions: ProjectIdeaSuggestion[]
   model_used: string
   execution_log: string[]

@@ -197,6 +197,7 @@ export async function POST(req: Request) {
     addLog(`[4/6] Mesin Ekstraksi Teks: ${wordCount} kata terekstrak dari PDF (${pdfExtractedText.length} karakter)`)
 
     const systemPromptText = `You are a strict, highly meticulous competition guidebook parser.
+
 Your task is to analyze the attached competition guidebook PDF file (both visually and from text) and extract 100% truthful, precise facts in Bahasa Indonesia.
 
 CRITICAL MANDATES FOR ABSOLUTE ACCURACY:
@@ -205,9 +206,16 @@ CRITICAL MANDATES FOR ABSOLUTE ACCURACY:
    - Extract the EXACT main theme stated in the document under "TEMA" or "FOKUS UTAMA".
    - Extract ALL specific sub-themes listed in the document. If the guidebook lists multiple sub-themes (e.g. "Smart City", "Green Economy"), list them ALL separated by newlines with "-" prefix.
    - NEVER output just "1" or a number as the sub-theme. If no sub-theme is stated, write "(Tidak ada sub-tema spesifik)".
-3. KEY REQUIREMENTS: Extract all specific eligibility requirements, team sizes, mandatory submission files, and rules mentioned in the guidebook.
-4. JUDGING CRITERIA: Extract all judging criteria and their exact percentage weights written in the document.
-5. RUNDOWN TIMELINE TABLE (CRITICAL - READ THE PDF CAREFULLY):
+3. BIAYA PENDAFTARAN / REGISTRATION FEE (CRITICAL):
+   - Search the document thoroughly for sections titled "BIAYA PENDAFTARAN", "REGISTRATION FEE", "BIAYA REGISTRASI", "BIAYA", "HARGA", or "PENDAFTARAN".
+   - Extract ALL registration fee tiers, batches, or pricing options mentioned in the document.
+   - EXAMPLE: "Batch 1 (Early Bird): Rp 100.000 / tim (1 - 15 Juli 2026)\nBatch 2 (Regular): Rp 150.000 / tim (16 - 31 Juli 2026)"
+   - EXAMPLE: "Rp 50.000 / peserta"
+   - EXAMPLE: "Gratis / Tidak dipungut biaya (Rp 0)"
+   - Format cleanly using line breaks or bullet points. If no fee is mentioned anywhere in the guidebook, write "Informasi biaya tidak tercantum dalam guidebook".
+4. KEY REQUIREMENTS: Extract all specific eligibility requirements, team sizes, mandatory submission files, and rules mentioned in the guidebook.
+5. JUDGING CRITERIA: Extract all judging criteria and their exact percentage weights written in the document.
+6. RUNDOWN TIMELINE TABLE (CRITICAL - READ THE PDF CAREFULLY):
    - ONLY use dates and event names found DIRECTLY in the PDF guidebook. Do NOT invent or hallucinate any dates.
    - Look for the official schedule section titled "TIMELINE", "JADWAL", "RUNDOWN", or "AGENDA".
    - Extract EVERY event row with its EXACT date as written in the document.
@@ -220,6 +228,7 @@ Return ONLY a valid JSON object matching this schema:
 {
   "summary": "Deskripsi murni kompetisi berdasarkan dokumen resmi.",
   "theme_and_subtheme": "Tema Utama: [Tema Resmi Dokumen]\nSub-Tema:\n- [Sub-Tema 1]\n- [Sub-Tema 2]",
+  "registration_fee": "Batch 1 (Early Bird): Rp 100.000 / tim (1 - 15 Juli 2026)\nBatch 2 (Regular): Rp 150.000 / tim (16 - 31 Juli 2026)",
   "key_requirements": ["Syarat 1", "Syarat 2", "Syarat 3"],
   "important_dates": ["Tanggal 1", "Tanggal 2"],
   "judging_criteria": ["Kriteria 1 (bobot %)", "Kriteria 2 (bobot %)"],
@@ -242,7 +251,7 @@ Return ONLY a valid JSON object matching this schema:
 
     const userPromptText = `Analyze the attached guidebook PDF document for competition "${competition.name}".
 ${pdfExtractedText ? `\n--- EXTRACTED TEXT CONTENT FROM PDF GUIDEBOOK ---\n${pdfExtractedText.slice(0, 18000)}\n--- END EXTRACTED TEXT ---\n` : ''}
-Inspect all pages and tables in the PDF document. Extract the real, actual overview, main theme, subthemes, key requirements, judging criteria, and ALL timeline rundown dates strictly from the PDF document content above.`
+Inspect all pages and tables in the PDF document. Extract the real, actual overview, main theme, subthemes, registration fee details, key requirements, judging criteria, and ALL timeline rundown dates strictly from the PDF document content above.`
 
     let parsedResult: any = null
     let modelUsed = preferred_model || 'gemini-3.6-flash'
@@ -395,6 +404,7 @@ Inspect all pages and tables in the PDF document. Extract the real, actual overv
           competition_id,
           summary: parsedResult.summary ?? '',
           theme_and_subtheme: parsedResult.theme_and_subtheme ?? null,
+          registration_fee: parsedResult.registration_fee ?? null,
           key_requirements: parsedResult.key_requirements ?? [],
           important_dates: parsedResult.important_dates ?? [],
           judging_criteria: parsedResult.judging_criteria ?? [],
@@ -411,6 +421,7 @@ Inspect all pages and tables in the PDF document. Extract the real, actual overv
       .single()
 
     if (saveErr) {
+
       addLog(`❌ Error menyimpan ke ai_summaries: ${saveErr.message}`)
     }
 
