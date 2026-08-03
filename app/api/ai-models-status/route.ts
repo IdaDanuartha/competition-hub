@@ -7,19 +7,24 @@ interface ModelResult {
   credit?: string | null  // e.g. "$3.42 remaining" or null if unavailable
 }
 
-/** Fetch OpenAI credit balance via /dashboard/billing/credit_grants (unofficial but reliable) */
+/** Fetch OpenAI credit balance using official organization costs API if Admin key permissions exist */
 async function fetchOpenAICredit(apiKey: string): Promise<string | null> {
   try {
-    const res = await fetch('https://api.openai.com/dashboard/billing/credit_grants', {
+    const now = Math.floor(Date.now() / 1000)
+    const startOfMonth = Math.floor(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime() / 1000)
+    
+    // Try official OpenAI Admin Costs API
+    const res = await fetch(`https://api.openai.com/v1/organization/costs?start_time=${startOfMonth}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(4000),
     })
-    if (!res.ok) return null
-    const json = await res.json()
-    // { total_available: 4.2, total_granted: 5, total_used: 0.8, ... }
-    const available = json?.total_available
-    if (typeof available === 'number') {
-      return `$${available.toFixed(2)} tersisa`
+
+    if (res.ok) {
+      const json = await res.json()
+      const totalCost = json?.data?.reduce((acc: number, item: { amount?: { value?: number } }) => acc + (item.amount?.value ?? 0), 0)
+      if (typeof totalCost === 'number') {
+        return `Pemakaian bulan ini: $${(totalCost / 100).toFixed(2)}`
+      }
     }
     return null
   } catch {
