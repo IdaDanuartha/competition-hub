@@ -2,16 +2,21 @@ import { NextResponse } from 'next/server'
 import { getEffectiveApiKeys } from '@/lib/get-api-keys'
 import type { DiscoveredCompetition } from '@/lib/discover'
 
-async function fetchLiveWebSearch(query: string): Promise<Array<{ title: string; link: string; desc: string }>> {
-  const urls = [
-    `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss`,
-    `https://www.bing.com/search?q=${encodeURIComponent(query + ' indonesia 2024 2025 2026')}&format=rss`,
+async function fetchLiveWebSearch(userKeywords: string): Promise<Array<{ title: string; link: string; desc: string }>> {
+  const cleanKw = userKeywords.trim()
+  const hasLomba = /^lomba\b/i.test(cleanKw)
+  const baseQuery = hasLomba ? cleanKw : `lomba ${cleanKw}`
+
+  const queries = [
+    `${baseQuery} indonesia`,
+    `kompetisi ${cleanKw.replace(/^lomba\s*/i, '')} indonesia 2024 2025`,
   ]
 
   const items: Array<{ title: string; link: string; desc: string }> = []
 
-  for (const url of urls) {
+  for (const q of queries) {
     try {
+      const url = `https://www.bing.com/search?q=${encodeURIComponent(q)}&format=rss`
       const res = await fetch(url, {
         headers: {
           'User-Agent':
@@ -36,48 +41,12 @@ async function fetchLiveWebSearch(query: string): Promise<Array<{ title: string;
         }
       }
     } catch {
-      // Continue to next URL
+      // Continue to next query
     }
   }
 
   return items
 }
-
-const SYSTEM_PROMPT = `You are an expert research assistant. Analyze the provided live web search results for Indonesian competitions, hackathons, and IT contests matching the user's query.
-
-CONSTRAINTS:
-1. LOCATION: Extract ONLY real competitions held in INDONESIA or open for Indonesian students, developers, and participants.
-2. RELEVANCE: Extract genuine competition names, organizing institutions, themes, and official website URLs.
-3. LANGUAGE: Write summary snippets in Bahasa Indonesia.
-4. EXCLUDE: Exclude old ended competitions from 2023 or earlier.
-
-For each competition found in the live search results or relevant to the query, extract:
-- name: official competition name
-- organizer: organizing body/institution (e.g. Universitas, Kemenkominfo, Puspresnas, Komunitas Tech), or null if unclear
-- theme: the competition's theme or main focus in Indonesian, or null if unclear
-- tags: 2-5 short category tags (e.g. ["web_development", "hackathon", "mahasiswa"])
-- website_url: official website URL (prefer direct link to competition page or portal)
-- registration_deadline: ISO 8601 string if mentioned, else null
-- submission_deadline: ISO 8601 string if mentioned, else null
-- summary_snippet: 1-2 sentence summary in Bahasa Indonesia
-
-Return ONLY a valid JSON object matching this schema, with no markdown fences:
-{
-  "results": [
-    {
-      "name": "string",
-      "organizer": "string or null",
-      "theme": "string or null",
-      "tags": ["string"],
-      "website_url": "string or null",
-      "registration_deadline": "ISO 8601 string or null",
-      "submission_deadline": "ISO 8601 string or null",
-      "summary_snippet": "string"
-    }
-  ]
-}
-
-If nothing relevant is found, return { "results": [] }.`
 
 export async function POST(req: Request) {
   try {
@@ -99,19 +68,51 @@ export async function POST(req: Request) {
     }
 
     // 1. Scraping live web search results for Indonesian competitions matching keywords
-    const liveSearchResults = await fetchLiveWebSearch(`lomba ${keywords} indonesia 2024 2025 2026`)
+    const liveSearchResults = await fetchLiveWebSearch(keywords)
 
-    const userPromptText = `Cari dan ekstrak lomba/hackathon di INDONESIA untuk kata kunci: "${keywords}".
-${
-  liveSearchResults.length > 0
-    ? `\n--- HASIL PENCARIAN WEB LANGSUNG (LIVE SEARCH RESULTS) ---\n${JSON.stringify(
-        liveSearchResults,
-        null,
-        2
-      )}\n--- END SEARCH RESULTS ---\n`
-    : ''
+    const systemPrompt = `You are an expert research assistant specializing in Indonesian competitions, hackathons, and IT contests.
+
+JOB: Extract a list of MULTIPLE (4 to 8) real, distinct competitions, hackathons, or contests in INDONESIA specifically matching the user's keyword "${keywords}".
+
+RULES:
+1. KEYWORD RELEVANCE: All returned items MUST be directly relevant to "${keywords}". For example, if keywords relate to "web development", return web development/programming competitions; if "hackathon", return hackathons.
+2. DIVERSITY: Extract specific distinct competition names (e.g. CompFest Web Development, Gemastik Divisi Pemrograman/UX, KMIPN, HackFest, Information Systems Expo, Lomba Website Mahasiswa, dsb.).
+3. DO NOT return only 1 generic result if multiple relevant competitions exist. Return 4 to 8 competitions.
+4. LANGUAGE: Summary snippets and titles in Bahasa Indonesia.
+
+For each competition, extract:
+- name: official competition name
+- organizer: organizing body/institution, or null if unclear
+- theme: the competition's theme or main focus in Indonesian, or null if unclear
+- tags: 2-5 short category tags (e.g. ["web_development", "hackathon", "mahasiswa"])
+- website_url: official website URL
+- registration_deadline: ISO 8601 string if mentioned, else null
+- submission_deadline: ISO 8601 string if mentioned, else null
+- summary_snippet: 1-2 sentence summary in Bahasa Indonesia
+
+Return ONLY valid JSON matching this schema, with no markdown fences:
+{
+  "results": [
+    {
+      "name": "string",
+      "organizer": "string or null",
+      "theme": "string or null",
+      "tags": ["string"],
+      "website_url": "string or null",
+      "registration_deadline": "ISO 8601 string or null",
+      "submission_deadline": "ISO 8601 string or null",
+      "summary_snippet": "string"
+    }
+  ]
 }
-Utamakan lomba aktif/terbaru di Indonesia untuk mahasiswa & umum.`
+
+If nothing relevant is found, return { "results": [] }.`
+
+    const userPromptText = `User Keyword: "${keywords}"\n\n--- LIVE SEARCH RESULTS FROM INDONESIAN WEBSITES ---\n${JSON.stringify(
+      liveSearchResults,
+      null,
+      2
+    )}\n--- END SEARCH RESULTS ---`
 
     let geminiModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']
     if (preferred_model && preferred_model.startsWith('gemini')) {
@@ -135,7 +136,7 @@ Utamakan lomba aktif/terbaru di Indonesia untuk mahasiswa & umum.`
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+                  systemInstruction: { parts: [{ text: systemPrompt }] },
                   contents: [{ parts: [{ text: userPromptText }] }],
                   generationConfig: { responseMimeType: 'application/json' },
                 }),
@@ -176,7 +177,7 @@ Utamakan lomba aktif/terbaru di Indonesia untuk mahasiswa & umum.`
           body: JSON.stringify({
             model: 'gpt-4o-mini',
             messages: [
-              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'system', content: systemPrompt },
               { role: 'user', content: userPromptText },
             ],
             response_format: { type: 'json_object' },
