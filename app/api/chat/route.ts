@@ -12,13 +12,9 @@ export async function GET(req: Request) {
     }
 
     let supabase = await createServerClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-      if (serviceRoleKey) {
-        supabase = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey) as any
-      }
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (serviceRoleKey) {
+      supabase = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey) as any
     }
 
     const { data, error } = await supabase
@@ -46,13 +42,9 @@ export async function DELETE(req: Request) {
     }
 
     let supabase = await createServerClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-      if (serviceRoleKey) {
-        supabase = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey) as any
-      }
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (serviceRoleKey) {
+      supabase = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey) as any
     }
 
     const { error } = await supabase
