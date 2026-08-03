@@ -74,7 +74,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'competition_id required' }, { status: 400 })
     }
 
-    const { geminiKey, openaiKey } = await getEffectiveApiKeys()
+    const { geminiKeys, openaiKey } = await getEffectiveApiKeys()
+
 
 
     // 1. Supabase client setup with Admin fallback
@@ -316,52 +317,62 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
     }
 
 
-    // Try Gemini models
-    if (!parsedResult && geminiKey) {
-      for (const modelName of geminiModels) {
-        try {
-          const modelReqStart = Date.now()
-          addLog(`[5/6] Mengirimkan payload ke Gemini AI Model: ${modelName}...`)
-          const apiEndpointModel = modelName
-          const parts: any[] = []
-          if (pdfBase64) {
-            parts.push({
-              inlineData: { mimeType: pdfMimeType, data: pdfBase64 },
-            })
-          }
-          parts.push({ text: userPromptText })
+    // Try Gemini models with multi-key failover
+    if (!parsedResult && geminiKeys.length > 0) {
+      for (let keyIdx = 0; keyIdx < geminiKeys.length; keyIdx++) {
+        const currentGeminiKey = geminiKeys[keyIdx]
+        const keyLabel = geminiKeys.length > 1 ? ` (Key #${keyIdx + 1})` : ''
 
-          const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${apiEndpointModel}:generateContent?key=${geminiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemPromptText }] },
-                contents: [{ parts }],
-                generationConfig: { responseMimeType: 'application/json' },
-              }),
-              signal: AbortSignal.timeout(25000),
+        for (const modelName of geminiModels) {
+          try {
+            const modelReqStart = Date.now()
+            addLog(`[5/6] Mengirimkan payload ke Gemini AI Model: ${modelName}${keyLabel}...`)
+            const apiEndpointModel = modelName
+            const parts: any[] = []
+            if (pdfBase64) {
+              parts.push({
+                inlineData: { mimeType: pdfMimeType, data: pdfBase64 },
+              })
             }
-          )
+            parts.push({ text: userPromptText })
 
-          const reqDuration = ((Date.now() - modelReqStart) / 1000).toFixed(2)
+            const res = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${apiEndpointModel}:generateContent?key=${currentGeminiKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: systemPromptText }] },
+                  contents: [{ parts }],
+                  generationConfig: { responseMimeType: 'application/json' },
+                }),
+                signal: AbortSignal.timeout(25000),
+              }
+            )
 
-          if (res.ok) {
-            const data = await res.json()
-            const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
-            if (rawText) {
-              parsedResult = JSON.parse(rawText)
-              modelUsed = modelName
-              addLog(`✓ ${modelName} berhasil memproses analisis dokumen (${reqDuration} detik)`)
+            const reqDuration = ((Date.now() - modelReqStart) / 1000).toFixed(2)
+
+            if (res.ok) {
+              const data = await res.json()
+              const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
+              if (rawText) {
+                parsedResult = JSON.parse(rawText)
+                modelUsed = modelName
+                addLog(`✓ ${modelName}${keyLabel} berhasil memproses analisis dokumen (${reqDuration} detik)`)
+                break
+              }
+            } else if (res.status === 429) {
+              addLog(`⚠️ Key #${keyIdx + 1} terkena Rate Limit (HTTP 429), berpindah ke Key berikutnya...`)
               break
+            } else {
+              addLog(`⚠️ Model ${modelName}${keyLabel} mengembalikan HTTP status ${res.status}`)
             }
-          } else {
-            addLog(`⚠️ Model ${modelName} mengembalikan HTTP status ${res.status}`)
+          } catch (e: any) {
+            addLog(`⚠️ Error pada model ${modelName}${keyLabel}: ${e?.message || 'Timeout'}`)
           }
-        } catch (e: any) {
-          addLog(`⚠️ Model ${modelName} timeout/error: ${e?.message || 'Error'}`)
         }
+
+        if (parsedResult) break
       }
     }
 

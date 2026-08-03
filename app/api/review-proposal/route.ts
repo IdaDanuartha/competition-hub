@@ -20,7 +20,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Format berkas harus berupa PDF' }, { status: 400 })
     }
 
-    const { geminiKey, openaiKey } = await getEffectiveApiKeys()
+    const { geminiKeys, openaiKey } = await getEffectiveApiKeys()
+
 
 
     // 1. Supabase client setup with Admin fallback
@@ -156,44 +157,53 @@ Inspect ALL pages, diagrams, text, and structure of the proposal PDF. Perform a 
       } catch (_e) {}
     }
 
-    // Try Gemini models
-    if (!parsedResult && geminiKey) {
-      for (const modelName of geminiModels) {
-        try {
-          const parts: any[] = []
-          if (pdfBase64) {
-            parts.push({
-              inlineData: { mimeType: 'application/pdf', data: pdfBase64 },
-            })
-          }
-          parts.push({ text: userPromptText })
+    // Try Gemini models with multi-key failover
+    if (!parsedResult && geminiKeys.length > 0) {
+      for (let keyIdx = 0; keyIdx < geminiKeys.length; keyIdx++) {
+        const currentGeminiKey = geminiKeys[keyIdx]
 
-          const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemPromptText }] },
-                contents: [{ parts }],
-                generationConfig: { responseMimeType: 'application/json' },
-              }),
-              signal: AbortSignal.timeout(30000),
+        for (const modelName of geminiModels) {
+          try {
+            const parts: any[] = []
+            if (pdfBase64) {
+              parts.push({
+                inlineData: { mimeType: 'application/pdf', data: pdfBase64 },
+              })
             }
-          )
+            parts.push({ text: userPromptText })
 
-          if (res.ok) {
-            const data = await res.json()
-            const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
-            if (rawText) {
-              parsedResult = JSON.parse(rawText)
-              modelUsed = modelName
-              break
+            const res = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentGeminiKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: systemPromptText }] },
+                  contents: [{ parts }],
+                  generationConfig: { responseMimeType: 'application/json' },
+                }),
+                signal: AbortSignal.timeout(30000),
+              }
+            )
+
+            if (res.ok) {
+              const data = await res.json()
+              const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
+              if (rawText) {
+                parsedResult = JSON.parse(rawText)
+                modelUsed = modelName
+                break
+              }
+            } else if (res.status === 429) {
+              break // Try next key
             }
-          }
-        } catch (_e) {}
+          } catch (_e) {}
+        }
+
+        if (parsedResult) break
       }
     }
+
 
     if (!parsedResult) {
       return NextResponse.json(

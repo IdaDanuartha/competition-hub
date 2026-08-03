@@ -60,10 +60,9 @@ async function fetchGeminiInfo(apiKey: string, modelId: string): Promise<{ statu
 }
 
 export async function GET() {
-  const { geminiKey, openaiKey } = await getEffectiveApiKeys()
+  const { geminiKeys, openaiKey } = await getEffectiveApiKeys()
 
   const results: Record<string, ModelResult> = {}
-
 
   // ── Gemini models ────────────────────────────────────────────────
   const modelsToCheck = [
@@ -72,19 +71,32 @@ export async function GET() {
   ]
 
   for (const m of modelsToCheck) {
-    if (!geminiKey) {
+    if (!geminiKeys || geminiKeys.length === 0) {
       results[m.id] = { status: 'key_missing', label: m.label, message: 'GEMINI_API_KEY belum dikonfigurasi', credit: null }
       continue
     }
 
-    const { status, credit } = await fetchGeminiInfo(geminiKey, m.id)
+    let finalStatus: ModelResult['status'] = 'rate_limited'
+    let activeKeyIndex = -1
+
+    for (let i = 0; i < geminiKeys.length; i++) {
+      const { status } = await fetchGeminiInfo(geminiKeys[i], m.id)
+      if (status === 'active') {
+        finalStatus = 'active'
+        activeKeyIndex = i + 1
+        break
+      }
+    }
+
+    const keyMsg = geminiKeys.length > 1 && activeKeyIndex > 0 ? ` (Key #${activeKeyIndex})` : ''
     results[m.id] = {
-      status,
+      status: finalStatus,
       label: m.label,
-      message: status === 'active' ? 'Aktif & Siap Digunakan' : status === 'rate_limited' ? 'Limit Kuota (429)' : 'Error / Limit',
-      credit,
+      message: finalStatus === 'active' ? `Aktif & Siap Digunakan${keyMsg}` : 'Limit Kuota (Semua Key Habis 429)',
+      credit: geminiKeys.length > 1 ? `${geminiKeys.length} Gemini Keys dikonfigurasi` : null,
     }
   }
+
 
   // ── OpenAI models (gpt-4o-mini & gpt-4o) ──────────────────────────
   const openaiModelsToCheck = [

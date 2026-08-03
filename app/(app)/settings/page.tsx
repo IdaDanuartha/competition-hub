@@ -43,10 +43,12 @@ export default function SettingsPage() {
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">AI Model API Keys</h2>
         <ApiKeySettingsForm
           defaultGeminiKey={activeSettings.gemini_api_key}
+          defaultGeminiKeys={activeSettings.gemini_api_keys}
           defaultOpenaiKey={activeSettings.openai_api_key}
           isLoading={isPending}
           onSubmit={(values) => update(values)}
         />
+
       </section>
 
       <section className="space-y-3">

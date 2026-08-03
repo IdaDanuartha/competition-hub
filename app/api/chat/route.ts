@@ -116,7 +116,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'messages array is required' }, { status: 400 })
     }
 
-    const { geminiKey, openaiKey } = await getEffectiveApiKeys()
+    const { geminiKeys, openaiKey } = await getEffectiveApiKeys()
+
 
 
     // 1. Supabase client setup
@@ -395,41 +396,51 @@ ATURAN PENTING:
     }
 
 
-    // Try Gemini models
-    if (!replyText && geminiKey) {
-      for (const modelName of geminiModels) {
-        try {
-          const apiEndpointModel = modelName
+    // Try Gemini models with multi-key failover
+    if (!replyText && geminiKeys.length > 0) {
+      for (let keyIdx = 0; keyIdx < geminiKeys.length; keyIdx++) {
+        const currentGeminiKey = geminiKeys[keyIdx]
 
-          const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${apiEndpointModel}:generateContent?key=${geminiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemInstructionText }] },
-                contents: geminiContents,
-              }),
-              signal: AbortSignal.timeout(18000),
-            }
-          )
+        for (const modelName of geminiModels) {
+          try {
+            const apiEndpointModel = modelName
 
-          if (res.ok) {
-            const data = await res.json()
-            const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text
-            if (candidateText) {
-              replyText = candidateText
-              modelUsed = modelName
+            const res = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${apiEndpointModel}:generateContent?key=${currentGeminiKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: systemInstructionText }] },
+                  contents: geminiContents,
+                }),
+                signal: AbortSignal.timeout(18000),
+              }
+            )
+
+            if (res.ok) {
+              const data = await res.json()
+              const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text
+              if (candidateText) {
+                replyText = candidateText
+                modelUsed = modelName
+                break
+              }
+            } else if (res.status === 429) {
+              console.warn(`[Chat API] Key #${keyIdx + 1} rate limited (HTTP 429), trying next key...`)
               break
+            } else {
+              console.warn(`[Chat API] Gemini ${apiEndpointModel} returned HTTP ${res.status}`)
             }
-          } else {
-            console.warn(`[Chat API] Gemini ${apiEndpointModel} returned HTTP ${res.status}`)
+          } catch (e) {
+            console.warn(`[Chat API] Gemini model ${modelName} failed:`, e)
           }
-        } catch (e) {
-          console.warn(`[Chat API] Gemini model ${modelName} failed:`, e)
         }
+
+        if (replyText) break
       }
     }
+
 
     // OpenAI fallback
     if (!replyText && openaiKey) {

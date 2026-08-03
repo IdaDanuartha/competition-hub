@@ -92,7 +92,9 @@ export type UserSettings = {
   rundown_generation_mode: RundownGenerationMode
   theme_preference: ThemePreference
   gemini_api_key?: string | null
+  gemini_api_keys?: string[] | null
   openai_api_key?: string | null
+
 }
 
 
