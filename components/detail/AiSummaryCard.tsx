@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Sparkles, RefreshCw, Copy, Check, ChevronDown, ChevronUp, Tag, Layers, Terminal, Loader2, Wallet } from 'lucide-react'
+import { Sparkles, RefreshCw, Copy, Check, ChevronDown, ChevronUp, Tag, Layers, Terminal, Loader2, Wallet, Award } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+
 import { Button } from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PortfolioMatchBadge } from '@/components/portfolio/PortfolioMatchBadge'
@@ -204,6 +205,122 @@ function FormattedRegistrationFee({ text }: { text: string }) {
     </div>
   )
 }
+
+function FormattedJudgingCriteria({ items }: { items: string[] }) {
+  if (!items || items.length === 0) return null
+
+  // Parse items into groups based on prefixes like "Babak Penyisihan - ", "Babak Final - "
+  const groups: Record<string, Array<{ title: string; weight: string | null }>> = {}
+  const groupOrder: string[] = []
+
+  for (const rawItem of items) {
+    if (!rawItem || !rawItem.trim()) continue
+
+    // Match prefixes like "Babak Penyisihan -", "Babak Final:", "Tahap 1 -", etc.
+    const prefixMatch = rawItem.match(/^(Babak\s+[^:-]+|Tahap\s+[^:-]+|Fase\s+[^:-]+|Category\s+[^:-]+|Kategori\s+[^:-]+|Penyisihan|Final|Semifinal)\s*[-:]\s*(.*)$/i)
+
+    let groupName = 'Kriteria Umum'
+    let content = rawItem.trim()
+
+    if (prefixMatch) {
+      groupName = prefixMatch[1].trim()
+      content = prefixMatch[2].trim()
+    }
+
+    // Format groupName (e.g. "Babak Penyisihan")
+    groupName = groupName.replace(/\b\w/g, (l) => l.toUpperCase())
+
+    // Extract weight percentage e.g. "(25%)" or "25%"
+    const weightMatch = content.match(/\(?\b(\d+(?:\.\d+)?%)\)?/i)
+    let weight: string | null = null
+    let title = content
+
+    if (weightMatch) {
+      weight = weightMatch[1]
+      title = content.replace(/\(?\b\d+(?:\.\d+)?%\)?/gi, '').trim().replace(/[-–—:]\s*$/, '').trim()
+    }
+
+    if (!groups[groupName]) {
+      groups[groupName] = []
+      groupOrder.push(groupName)
+    }
+
+    groups[groupName].push({ title, weight })
+  }
+
+  const hasMultipleGroups = groupOrder.length > 1 || (groupOrder.length === 1 && groupOrder[0] !== 'Kriteria Umum')
+
+  if (!hasMultipleGroups) {
+    return (
+      <div className="space-y-2">
+        <h4 className="font-semibold text-zinc-800 dark:text-zinc-200">Judging Criteria</h4>
+        <div className="space-y-1.5">
+          {items.map((crit, idx) => {
+            const weightMatch = crit.match(/\(?\b(\d+(?:\.\d+)?%)\)?/i)
+            const weight = weightMatch ? weightMatch[1] : null
+            const title = weightMatch ? crit.replace(/\(?\b\d+(?:\.\d+)?%\)?/gi, '').trim() : crit
+
+            return (
+              <div
+                key={idx}
+                className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200/80 bg-zinc-50/60 px-3 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-900/40"
+              >
+                <span className="font-medium text-zinc-800 dark:text-zinc-200">{title}</span>
+                {weight && (
+                  <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 font-bold text-amber-700 dark:border-amber-900/60 dark:bg-amber-950 dark:text-amber-400 text-[11px]">
+                    {weight}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2.5">
+      <h4 className="font-semibold text-zinc-800 dark:text-zinc-200">Judging Criteria</h4>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {groupOrder.map((groupName) => (
+          <div
+            key={groupName}
+            className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-3.5 shadow-2xs dark:border-zinc-800 dark:bg-zinc-900/40 flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between border-b border-zinc-200/80 pb-2 dark:border-zinc-800">
+                <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider flex items-center gap-1.5">
+                  <Award className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                  {groupName}
+                </span>
+                <span className="text-[10px] text-zinc-400 font-medium">
+                  {groups[groupName].length} kriteria
+                </span>
+              </div>
+
+              <ul className="mt-2.5 space-y-2">
+                {groups[groupName].map((item, idx) => (
+                  <li key={idx} className="flex items-start justify-between gap-2 text-xs">
+                    <span className="text-zinc-700 dark:text-zinc-300 font-medium leading-relaxed">
+                      • {item.title}
+                    </span>
+                    {item.weight && (
+                      <span className="shrink-0 rounded-md border border-amber-200/80 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:border-amber-900/60 dark:bg-amber-950 dark:text-amber-400">
+                        {item.weight}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 
 
 export function AiSummaryCard({ summary, isLoading, isGenerating, onRegenerate }: AiSummaryCardProps) {
@@ -470,15 +587,9 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
               )}
 
               {summary.judging_criteria.length > 0 && (
-                <div>
-                  <h4 className="font-semibold text-zinc-800 dark:text-zinc-200">Judging Criteria</h4>
-                  <ul className="mt-1 list-disc space-y-1 pl-4 text-zinc-600 dark:text-zinc-400">
-                    {summary.judging_criteria.map((crit, idx) => (
-                      <li key={idx}>{crit}</li>
-                    ))}
-                  </ul>
-                </div>
+                <FormattedJudgingCriteria items={summary.judging_criteria} />
               )}
+
 
               {summary.project_idea_suggestions.length > 0 && (
                 <div>
