@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FileSearch, Sparkles, CheckCircle2, AlertTriangle, Lightbulb, Award, Loader2, FileText, ChevronDown, ChevronUp, History } from 'lucide-react'
+import { FileSearch, Sparkles, CheckCircle2, AlertTriangle, Lightbulb, Award, Loader2, FileText, ChevronDown, ChevronUp, History, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { FileDropzone } from '@/components/ui/FileDropzone'
 import { ModelSelector } from '@/components/ui/ModelSelector'
-import { useProposalReviews, useReviewProposal } from '@/hooks/useProposalReview'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { useProposalReviews, useReviewProposal, useDeleteProposalReview } from '@/hooks/useProposalReview'
 import type { ProposalReview } from '@/lib/types/database'
 
 import { usePreferredModel } from '@/hooks/usePreferredModel'
@@ -21,8 +22,10 @@ const MODEL_OPTIONS = [
 export function ProposalReviewSection({ competitionId }: { competitionId: string }) {
   const { data: reviews = [], isLoading } = useProposalReviews(competitionId)
   const { mutateAsync: reviewProposal, isPending } = useReviewProposal()
+  const { mutateAsync: deleteProposalReview, isPending: isDeleting } = useDeleteProposalReview()
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [selectedReview, setSelectedReview] = useState<ProposalReview | null>(null)
+  const [reviewToDelete, setReviewToDelete] = useState<ProposalReview | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [selectedModel, setSelectedModel] = usePreferredModel('gemini-3.6-flash')
 
@@ -39,8 +42,8 @@ export function ProposalReviewSection({ competitionId }: { competitionId: string
       .catch(() => {})
   }, [])
 
-  // The active review is either user-selected from history or the latest review
-  const activeReview = selectedReview || reviews[0] || null
+  // The active review is only displayed when user uploads a new proposal or selects one from history
+  const activeReview = selectedReview || null
 
   const handleFileSelect = async (file: File) => {
     setErrorMsg(null)
@@ -53,6 +56,19 @@ export function ProposalReviewSection({ competitionId }: { competitionId: string
       setSelectedReview(result)
     } catch (err: any) {
       setErrorMsg(err?.message || 'Gagal menganalisis proposal. Pastikan format file PDF valid.')
+    }
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!reviewToDelete) return
+    try {
+      await deleteProposalReview({ reviewId: reviewToDelete.id, competitionId })
+      if (selectedReview?.id === reviewToDelete.id) {
+        setSelectedReview(null)
+      }
+      setReviewToDelete(null)
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Gagal menghapus riwayat evaluasi proposal.')
     }
   }
 
@@ -144,29 +160,45 @@ export function ProposalReviewSection({ competitionId }: { competitionId: string
           <div className="grid gap-2 sm:grid-cols-2">
             {reviews.map((rev) => {
               const isSelected = activeReview?.id === rev.id
-              const badge = getScoreBadge(rev.overall_score)
               return (
-                <button
+                <div
                   key={rev.id}
-                  onClick={() => setSelectedReview(rev)}
-                  className={`flex items-center justify-between p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer ${
+                  className={`group flex items-center justify-between p-2.5 rounded-lg border text-left text-xs transition-all ${
                     isSelected
                       ? 'border-purple-500 bg-purple-50/50 dark:bg-purple-950/30 font-semibold'
                       : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-950'
                   }`}
                 >
-                  <div className="min-w-0 pr-2 space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedReview(rev)}
+                    className="flex-1 min-w-0 pr-2 text-left cursor-pointer space-y-0.5"
+                  >
                     <p className="truncate text-zinc-900 dark:text-zinc-100 font-medium">
                       {rev.file_name}
                     </p>
                     <p className="text-[10px] text-zinc-400">
                       {new Date(rev.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
                     </p>
+                  </button>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`px-2 py-1 rounded-md text-[11px] font-bold ${getScoreColor(rev.overall_score)} border`}>
+                      {rev.overall_score}/100
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setReviewToDelete(rev)
+                      }}
+                      title="Hapus riwayat"
+                      className="p-1 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
-                  <span className={`shrink-0 px-2 py-1 rounded-md text-[11px] font-bold ${getScoreColor(rev.overall_score)} border`}>
-                    {rev.overall_score}/100
-                  </span>
-                </button>
+                </div>
               )
             })}
           </div>
@@ -299,6 +331,20 @@ export function ProposalReviewSection({ competitionId }: { competitionId: string
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!reviewToDelete}
+        title="Hapus Riwayat Evaluasi"
+        description={`Apakah Anda yakin ingin menghapus riwayat evaluasi untuk "${reviewToDelete?.file_name || ''}"? Riwayat yang dihapus tidak dapat dikembalikan.`}
+        confirmLabel="Hapus"
+        cancelLabel="Batal"
+        variant="danger"
+        isConfirming={isDeleting}
+        onConfirm={handleDeleteConfirm}
+        onClose={() => setReviewToDelete(null)}
+      />
     </Card>
   )
 }
+

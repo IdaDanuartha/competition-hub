@@ -111,7 +111,7 @@ export function ApiKeySettingsForm({
             Sistem Pengalihan Otomatis (Failover Engine)
           </p>
           <p className="leading-relaxed text-purple-800/90 dark:text-purple-300">
-            Jika dikosongkan, sistem akan menggunakan API Key bawaan dari file <code className="bg-purple-100 dark:bg-purple-900/80 px-1 py-0.5 rounded font-mono text-[11px]">.env</code>. 
+            Jika dikosongkan, sistem akan menggunakan API Key bawaan dari file <code className="bg-purple-100 dark:bg-purple-900/80 px-1 py-0.5 rounded font-mono text-[11px]">.env</code>.
             Anda dapat menambahkan beberapa API Key Gemini di bawah untuk pencegahan limit kuota.
           </p>
         </div>
@@ -135,8 +135,8 @@ export function ApiKeySettingsForm({
               const isPreview = showGeminiList[idx] ?? false
               const displayVal = isPreview && keyVal.trim().length > 0
                 ? (keyVal.trim().length <= 5
-                    ? keyVal.trim()
-                    : `••••••••••••••••${keyVal.trim().slice(-5)}`)
+                  ? keyVal.trim()
+                  : `••••••••••••••••${keyVal.trim().slice(-5)}`)
                 : keyVal
 
               return (
@@ -229,8 +229,8 @@ export function ApiKeySettingsForm({
               value={
                 showOpenai && openaiKey.trim().length > 0
                   ? (openaiKey.trim().length <= 5
-                      ? openaiKey.trim()
-                      : `••••••••••••••••${openaiKey.trim().slice(-5)}`)
+                    ? openaiKey.trim()
+                    : `••••••••••••••••${openaiKey.trim().slice(-5)}`)
                   : openaiKey
               }
               onChange={(e) => setOpenaiKey(e.target.value)}

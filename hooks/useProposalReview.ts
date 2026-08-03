@@ -59,3 +59,23 @@ export function useReviewProposal() {
     },
   })
 }
+
+export function useDeleteProposalReview() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ reviewId, competitionId }: { reviewId: string; competitionId: string }) => {
+      const supabase = createClient()
+      const { error } = await (supabase as any)
+        .from('proposal_reviews')
+        .delete()
+        .eq('id', reviewId)
+
+      if (error) throw error
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['proposal-reviews', variables.competitionId] })
+    },
+  })
+}
+
