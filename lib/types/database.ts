@@ -129,6 +129,27 @@ export type PortfolioEntry = {
   updated_at: string
 }
 
+export type CriteriaScoreItem = {
+  criterion: string
+  score: number
+  max_score: number
+  feedback: string
+}
+
+export type ProposalReview = {
+  id: string
+  competition_id: string
+  file_name: string
+  overall_score: number
+  summary: string
+  criteria_scores: CriteriaScoreItem[]
+  strengths: string[]
+  weaknesses: string[]
+  actionable_recommendations: string[]
+  model_used: string
+  created_at: string
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -138,11 +159,13 @@ export interface Database {
       notification_logs: { Row: NotificationLog; Insert: Partial<NotificationLog> & { rundown_item_id: string; message: string; status: NotificationStatus }; Update: Partial<NotificationLog>; Relationships: [] }
       user_settings: { Row: UserSettings; Insert: Partial<UserSettings> & { id: string }; Update: Partial<UserSettings>; Relationships: [] }
       ai_summaries: { Row: AiSummary; Insert: Partial<AiSummary> & { competition_id: string; summary: string }; Update: Partial<AiSummary>; Relationships: [] }
-      portfolio_entries: { Row: PortfolioEntry; Insert: Partial<PortfolioEntry> & { user_id: string; name: string }; Update: Partial<PortfolioEntry>; Relationships: [] }
+      portfolio: { Row: PortfolioEntry; Insert: Partial<PortfolioEntry> & { user_id: string; name: string }; Update: Partial<PortfolioEntry>; Relationships: [] }
+      proposal_reviews: { Row: ProposalReview; Insert: Partial<ProposalReview> & { competition_id: string; file_name: string; overall_score: number; summary: string }; Update: Partial<ProposalReview>; Relationships: [] }
       chat_messages: { Row: ChatMessage; Insert: Partial<ChatMessage> & { competition_id: string; user_id: string; role: 'user' | 'assistant'; content: string }; Update: Partial<ChatMessage>; Relationships: [] }
       chat_sessions: { Row: ChatSession; Insert: Partial<ChatSession> & { competition_id: string; user_id: string; title: string }; Update: Partial<ChatSession>; Relationships: [] }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
+    Enums: Record<string, never>
   }
 }

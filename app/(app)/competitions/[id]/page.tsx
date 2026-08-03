@@ -9,7 +9,9 @@ import { CompetitionForm } from '@/components/competitions/CompetitionForm'
 import { DuplicateCompetitionAction } from '@/components/competitions/DuplicateCompetitionAction'
 import { ShareableExportAction } from '@/components/detail/ShareableExportAction'
 import { DocumentsSection } from '@/components/detail/DocumentsSection'
+import { ProposalReviewSection } from '@/components/detail/ProposalReviewSection'
 import { LinksSection } from '@/components/detail/LinksSection'
+
 import { AiSummaryCard } from '@/components/detail/AiSummaryCard'
 import { CompetitionChatDrawer } from '@/components/detail/CompetitionChatDrawer'
 import { RundownList } from '@/components/detail/RundownList'
@@ -167,6 +169,9 @@ export default function CompetitionDetailPage({ params }: { params: Promise<{ id
             <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Guidebooks &amp; Documents</h2>
             <DocumentsSection competitionId={competition.id} documents={documents} />
           </section>
+
+          <ProposalReviewSection competitionId={id} />
+
 
           <section className="space-y-4">
             <div className="flex items-center justify-between">
