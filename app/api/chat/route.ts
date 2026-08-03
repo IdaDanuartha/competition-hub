@@ -137,7 +137,8 @@ export async function POST(req: Request) {
       }
     }
 
-    // 5. Construct System Context & Instructions
+    // 5. Construct Static Context for PROMPT CACHING
+    // Keeping static system prompt identical across turns enables automatic prompt caching for OpenAI & Gemini!
     const metadataContext = `
 COMPETITION DATA:
 - Name: ${competition.name}
@@ -169,28 +170,50 @@ ${aiSummary ? JSON.stringify({
 }, null, 2) : 'Belum ada ringkasan AI sebelumnya'}
 
 ${pdfExtractedText ? `EXTRACTED TEXT CONTENT FROM GUIDEBOOK PDF:\n"""\n${pdfExtractedText.slice(0, 30000)}\n"""\n` : ''}
-GUIDEBOOK ATTACHED: ${pdfBase64 || pdfExtractedText ? 'Ya (Dokumen PDF dilampirkan dan dianalisis langsung)' : 'Tidak ada dokumen PDF'}
+GUIDEBOOK ATTACHED: ${pdfBase64 || pdfExtractedText ? 'Ya (Dokumen PDF dilampirkan dan dianalisis)' : 'Tidak ada dokumen PDF'}
 `
 
     const systemInstructionText = `Anda adalah Asisten AI Cerdas khusus untuk kompetisi "${competition.name}".
 Tugas utama Anda adalah membantu pengguna menjawab segala pertanyaan mengenai kompetisi ini (syarat pendaftaran, kriteria penilaian, tema/subtema, timeline, biaya, format karya, rekomendasi ide proyek, dll).
 
+[KONTEKS DATA & GUIDEBOOK KOMPETISI]
+${metadataContext}
+
 ATURAN PENTING:
 1. Baca dan manfaatkan seluruh konteks data kompetisi, ringkasan AI, serta dokumen PDF Guidebook yang dilampirkan.
 2. Jawab pertanyaan pengguna secara akurat, lugas, ramah, dan terstruktur menggunakan bahasa Indonesia yang baik.
 3. Gunakan format Markdown (bullet points, bold, dll) agar mudah dibaca.
-4. Sebelum menyatakan suatu informasi "tidak ada", periksa ULANG seluruh isi visual dokumen PDF yang dilampirkan (bukan hanya potongan teks terekstrak), karena teks ekstraksi bisa saja terpotong atau tidak lengkap sementara dokumen PDF aslinya tetap memuat informasi tersebut.
-5. Jika informasi spesifik yang ditanyakan pengguna memang benar-benar tidak ada baik di data kompetisi maupun dokumen PDF (setelah pengecekan visual), nyatakan secara jujur bahwa informasi tersebut tidak tercantum dalam guidebook/sistem.`
+4. Sebelum menyatakan suatu informasi "tidak ada", periksa ULANG seluruh isi dokumen PDF yang dilampirkan.
+5. Jika informasi spesifik yang ditanyakan pengguna memang benar-benar tidak ada, nyatakan secara jujur bahwa informasi tersebut tidak tercantum dalam guidebook/sistem.`
 
-    const userPromptContent = `Berikut adalah seluruh riwayat percakapan pengguna dan konteks kompetisi:
+    // Build OpenAI messages with static system prompt for Automatic Prompt Caching
+    const openAiMessages = [
+      { role: 'system', content: systemInstructionText },
+      ...messages.map((m: { role: string; content: string }) => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content,
+      })),
+    ]
 
-[KONTEKS KOMPETISI]
-${metadataContext}
+    // Build Gemini contents array with static systemInstruction for Context Caching
+    const geminiContents: any[] = []
+    if (pdfBase64) {
+      geminiContents.push({
+        role: 'user',
+        parts: [{ inlineData: { mimeType: pdfMimeType, data: pdfBase64 } }, { text: 'Berikut adalah dokumen guidebook PDF kompetisi.' }],
+      })
+      geminiContents.push({
+        role: 'model',
+        parts: [{ text: 'Baik, saya telah membaca dan menyimpan dokumen PDF guidebook tersebut.' }],
+      })
+    }
 
-[RIWAYAT PERCAKAPAN & PERTANYAAN]
-${messages.map((m: { role: string; content: string }) => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n')}
-
-Jawablah pesan terakhir pengguna dengan jelas dan lengkap berdasarkan dokumen dan data kompetisi di atas.`
+    messages.forEach((m: { role: string; content: string }) => {
+      geminiContents.push({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      })
+    })
 
     let replyText = ''
     let modelUsed = preferred_model || 'gemini-3.6-flash'
@@ -211,12 +234,9 @@ Jawablah pesan terakhir pengguna dengan jelas dan lengkap berdasarkan dokumen da
           },
           body: JSON.stringify({
             model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: systemInstructionText },
-              { role: 'user', content: userPromptContent },
-            ],
+            messages: openAiMessages,
           }),
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(18000),
         })
 
         if (res.ok) {
@@ -234,13 +254,6 @@ Jawablah pesan terakhir pengguna dengan jelas dan lengkap berdasarkan dokumen da
       for (const modelName of geminiModels) {
         try {
           const apiEndpointModel = modelName
-          const parts: any[] = []
-          if (pdfBase64) {
-            parts.push({
-              inlineData: { mimeType: pdfMimeType, data: pdfBase64 },
-            })
-          }
-          parts.push({ text: userPromptContent })
 
           const res = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${apiEndpointModel}:generateContent?key=${geminiKey}`,
@@ -249,9 +262,9 @@ Jawablah pesan terakhir pengguna dengan jelas dan lengkap berdasarkan dokumen da
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 systemInstruction: { parts: [{ text: systemInstructionText }] },
-                contents: [{ parts }],
+                contents: geminiContents,
               }),
-              signal: AbortSignal.timeout(15000),
+              signal: AbortSignal.timeout(18000),
             }
           )
 
@@ -283,10 +296,7 @@ Jawablah pesan terakhir pengguna dengan jelas dan lengkap berdasarkan dokumen da
           },
           body: JSON.stringify({
             model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: systemInstructionText },
-              { role: 'user', content: userPromptContent },
-            ],
+            messages: openAiMessages,
           }),
         })
 

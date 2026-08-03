@@ -111,6 +111,36 @@ export function CompetitionChatDrawer({ competitionId, competitionName }: Compet
   const [modelStatuses, setModelStatuses] = useState<Record<string, { status: any; message: string }>>({})
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
+  // Load chat history from localStorage for this specific competition
+  useEffect(() => {
+    if (typeof window !== 'undefined' && competitionId) {
+      const stored = localStorage.getItem(`ai-chat-history-${competitionId}`)
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored) as any[]
+          const restored: Message[] = parsed.map((m) => ({
+            ...m,
+            timestamp: new Date(m.timestamp),
+          }))
+          setMessages(restored)
+        } catch {
+          // ignore parse error
+        }
+      }
+    }
+  }, [competitionId])
+
+  // Save chat history to localStorage whenever messages update
+  useEffect(() => {
+    if (typeof window !== 'undefined' && competitionId) {
+      if (messages.length > 0) {
+        localStorage.setItem(`ai-chat-history-${competitionId}`, JSON.stringify(messages))
+      } else {
+        localStorage.removeItem(`ai-chat-history-${competitionId}`)
+      }
+    }
+  }, [messages, competitionId])
+
   function handleModelChange(model: string) {
     setPreferredModel(model)
     if (typeof window !== 'undefined') {
