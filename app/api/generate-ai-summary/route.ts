@@ -200,22 +200,17 @@ CRITICAL MANDATES FOR ABSOLUTE ACCURACY:
 1. OVERVIEW: Write a concise overview (3-5 sentences) summarizing the exact competition background, organizer, and target audience directly written in the guidebook.
 2. TEMA UTAMA & SUB-TEMA:
    - Extract the EXACT main theme stated in the document under "TEMA" or "FOKUS UTAMA".
-   - Extract all specific sub-themes / categories listed in the document. Do NOT make up generic categories.
+   - Extract ALL specific sub-themes listed in the document. If the guidebook lists multiple sub-themes (e.g. "Smart City", "Green Economy"), list them ALL separated by newlines with "-" prefix.
+   - NEVER output just "1" or a number as the sub-theme. If no sub-theme is stated, write "(Tidak ada sub-tema spesifik)".
 3. KEY REQUIREMENTS: Extract all specific eligibility requirements, team sizes, mandatory submission files, and rules mentioned in the guidebook.
-4. JUDGING CRITERIA: Extract all judging criteria and their exact percentage weights written in the document (e.g. "Inovasi & Kesesuaian Solusi (25%)", "Implementasi Teknologi & AI (30%)", "Fungsionalitas Website (30%)", "Desain Antarmuka / UI/UX (15%)").
-5. RUNDOWN TIMELINE TABLE (CRITICAL):
-   - Look specifically for the official schedule table titled "TIMELINE PELAKSANAAN", "JADWAL KEGIATAN", or "AGENDA LOMBA".
-   - Extract EVERY row of the table line by line.
-   - For example, extract exact rows like:
-     * Pendaftaran dan Pengumpulan Gelombang 1 (31 Juli - 09 Agustus 2026)
-     * Pendaftaran dan Pengumpulan Gelombang 2 (10 Agustus - 24 Agustus 2026)
-     * Pendaftaran dan Pengumpulan Gelombang 3 (25 Agustus - 20 September 2026)
-     * Penjurian Finalis (Online) (21-22 September 2026)
-     * Pengumuman Finalis (23 September 2026)
-     * Technical Meeting Finalis (Online) (25 September 2026)
-     * Registrasi Ulang Finalis (26 September - 27 Oktober 2026)
-     * Presentasi, Seminar, Awarding (Offline) (31 Oktober 2026)
-   - Do NOT omit any rows from the table, and do NOT make up fictitious dates in January/March/May!
+4. JUDGING CRITERIA: Extract all judging criteria and their exact percentage weights written in the document.
+5. RUNDOWN TIMELINE TABLE (CRITICAL - READ THE PDF CAREFULLY):
+   - ONLY use dates and event names found DIRECTLY in the PDF guidebook. Do NOT invent or hallucinate any dates.
+   - Look for the official schedule section titled "TIMELINE", "JADWAL", "RUNDOWN", or "AGENDA".
+   - Extract EVERY event row with its EXACT date as written in the document.
+   - For the iso_date field: convert the start date of each event to a precise ISO 8601 string (e.g. if the guidebook says "21 Juni 2026 - 16 Oktober 2026", use "2026-06-21T08:00:00.000Z").
+   - If the event spans a range, use the START date for iso_date.
+   - Do NOT make up dates. If unsure, use the year from the document context.
 
 Return ONLY a valid JSON object matching this schema:
 {
@@ -234,9 +229,9 @@ Return ONLY a valid JSON object matching this schema:
   "rundown_timeline": [
     {
       "title": "Nama Agenda Resmi dari Tabel Dokumen",
-      "date_str": "Tanggal Resmi dari Tabel Dokumen (contoh: 31 Juli - 09 Agustus 2026)",
-      "description": "Keterangan pelaksanaan (Online/Offline) atau detail kegiatan",
-      "iso_date": "ISO date string presisi (contoh: 2026-07-31T08:00:00Z)"
+      "date_str": "Tanggal lengkap persis seperti di dokumen (contoh: 21 Juni 2026 - 16 Oktober 2026)",
+      "description": "Keterangan detail kegiatan dari dokumen",
+      "iso_date": "ISO 8601 string dari tanggal MULAI event (contoh: 2026-06-21T08:00:00.000Z)"
     }
   ]
 }`
@@ -421,18 +416,35 @@ Inspect all pages and tables in the PDF document. Extract the real, actual overv
       await supabase.from('rundown_items').delete().eq('competition_id', competition_id).eq('is_auto_generated', true)
 
       const rundownInserts = parsedResult.rundown_timeline.map((item: any) => {
-        let validIsoDate = item.iso_date
-        const parsedIso = parseIndonesianDateToIso(item.date_str || item.title || '')
-        if (parsedIso) {
-          validIsoDate = parsedIso
-        } else if (!validIsoDate || isNaN(Date.parse(validIsoDate))) {
+        // Priority 1: Trust AI's iso_date if it's a valid date string
+        let validIsoDate: string | null = null
+        if (item.iso_date && !isNaN(Date.parse(item.iso_date))) {
+          validIsoDate = item.iso_date
+        }
+
+        // Priority 2: Parse the date_str using our Indonesian date parser as fallback
+        if (!validIsoDate) {
+          validIsoDate = parseIndonesianDateToIso(item.date_str || '')
+        }
+
+        // Priority 3: Try parsing from title as last resort
+        if (!validIsoDate) {
+          validIsoDate = parseIndonesianDateToIso(item.title || '')
+        }
+
+        // Final fallback: use current date (should rarely happen)
+        if (!validIsoDate) {
           validIsoDate = new Date().toISOString()
         }
+
+        const description = item.description
+          ? `[${item.date_str || ''}] ${item.description}`
+          : item.date_str || ''
 
         return {
           competition_id,
           title: item.title || 'Agenda Lomba',
-          description: item.description ? `[${item.date_str || ''}] ${item.description}` : item.date_str || '',
+          description,
           event_at: validIsoDate,
           is_auto_generated: true,
           auto_source: `guidebook_${modelUsed}`,

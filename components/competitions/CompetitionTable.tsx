@@ -6,22 +6,34 @@ import { formatDate } from '@/lib/date-format'
 import { formatTag } from '@/lib/tags'
 import { STATUS_ORDER, statusLabel, statusColorClass } from '@/lib/status'
 import { useUpdateCompetitionStatus } from '@/hooks/useCompetitions'
+import { useNextRundownDates } from '@/hooks/useNextRundownDates'
 import type { Competition, CompetitionStatus } from '@/lib/types/database'
 import { cn } from '@/lib/cn'
 
 type SortKey = 'name' | 'nearestDeadline' | 'status'
 
-function nearestDeadline(c: Competition): number {
-  const dates = [c.registration_deadline, c.submission_deadline].filter(Boolean) as string[]
-  if (dates.length === 0) return Infinity
-  return Math.min(...dates.map((d) => new Date(d).getTime()))
-}
+const FINISHED_STATUSES = new Set<CompetitionStatus>(['completed', 'not_selected'])
 
-function sortCompetitions(competitions: Competition[], sortKey: SortKey): Competition[] {
+function sortCompetitions(
+  competitions: Competition[],
+  sortKey: SortKey,
+  nextRundownMap: Map<string, { event_at: string }>
+): Competition[] {
   const copy = [...competitions]
   if (sortKey === 'name') return copy.sort((a, b) => a.name.localeCompare(b.name))
   if (sortKey === 'status') return copy.sort((a, b) => a.status.localeCompare(b.status))
-  return copy.sort((a, b) => nearestDeadline(a) - nearestDeadline(b))
+
+  // Sort by nearest upcoming date — prefer rundown event, fall back to deadline fields
+  return copy.sort((a, b) => {
+    const getMs = (c: Competition) => {
+      const rundown = nextRundownMap.get(c.id)
+      if (rundown) return new Date(rundown.event_at).getTime()
+      const dates = [c.registration_deadline, c.submission_deadline].filter(Boolean) as string[]
+      if (dates.length === 0) return Infinity
+      return Math.min(...dates.map((d) => new Date(d).getTime()))
+    }
+    return getMs(a) - getMs(b)
+  })
 }
 
 interface CompetitionTableProps {
@@ -32,6 +44,8 @@ interface CompetitionTableProps {
 
 export function CompetitionTable({ competitions, sortKey, onSortKeyChange }: CompetitionTableProps) {
   const { mutate: updateStatus } = useUpdateCompetitionStatus()
+  const ids = competitions.map((c) => c.id)
+  const { data: nextRundownMap = new Map() } = useNextRundownDates(ids)
 
   if (competitions.length === 0) {
     return (
@@ -43,7 +57,7 @@ export function CompetitionTable({ competitions, sortKey, onSortKeyChange }: Com
     )
   }
 
-  const sorted = sortCompetitions(competitions, sortKey)
+  const sorted = sortCompetitions(competitions, sortKey, nextRundownMap)
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white shadow-xs overflow-hidden dark:border-zinc-800 dark:bg-zinc-950">
@@ -90,6 +104,15 @@ export function CompetitionTable({ competitions, sortKey, onSortKeyChange }: Com
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {sorted.map((c) => {
               const validTags = c.tags.filter((t) => t && t !== '_' && t.trim() !== '')
+              const isFinished = FINISHED_STATUSES.has(c.status)
+
+              // Determine what to show in "Next Date"
+              const rundown = nextRundownMap.get(c.id)
+              const nextDateStr = rundown
+                ? formatDate(rundown.event_at)
+                : formatDate(c.submission_deadline ?? c.registration_deadline)
+              const nextLabel = rundown ? rundown.title : null
+
               return (
                 <tr
                   key={c.id}
@@ -150,8 +173,19 @@ export function CompetitionTable({ competitions, sortKey, onSortKeyChange }: Com
                   </td>
 
                   {/* Next Date Column */}
-                  <td className="py-3.5 px-5 text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
-                    {formatDate(c.submission_deadline ?? c.registration_deadline) || '—'}
+                  <td className="py-3.5 px-5">
+                    {isFinished || !nextDateStr ? (
+                      <span className="text-xs text-zinc-300 dark:text-zinc-700">—</span>
+                    ) : (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs tabular-nums text-zinc-500 dark:text-zinc-400">{nextDateStr}</span>
+                        {nextLabel && (
+                          <span className="text-[10px] text-zinc-400 dark:text-zinc-500 leading-tight max-w-[160px] truncate">
+                            {nextLabel}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </td>
                 </tr>
               )

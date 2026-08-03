@@ -10,10 +10,28 @@ import { formatDate } from '@/lib/date-format'
 import { formatTag } from '@/lib/tags'
 import { useUpdateCompetitionStatus } from '@/hooks/useCompetitions'
 import type { Competition, CompetitionStatus } from '@/lib/types/database'
+import type { NextRundownEntry } from '@/hooks/useNextRundownDates'
 
-export function CompetitionCard({ competition }: { competition: Competition }) {
+const FINISHED_STATUSES = new Set<CompetitionStatus>(['completed', 'not_selected'])
+
+export function CompetitionCard({
+  competition,
+  nextRundown,
+}: {
+  competition: Competition
+  nextRundown?: NextRundownEntry
+}) {
   const { mutate } = useUpdateCompetitionStatus()
   const [isDragging, setIsDragging] = useState(false)
+
+  const isFinished = FINISHED_STATUSES.has(competition.status)
+
+  // Determine next date: prefer rundown event, fall back to deadline fields
+  const nextDateStr = nextRundown
+    ? formatDate(nextRundown.event_at)
+    : formatDate(competition.submission_deadline ?? competition.registration_deadline)
+  const nextLabel = nextRundown ? nextRundown.title : null
+  const showNext = !isFinished && !!nextDateStr
 
   return (
     <div
@@ -36,9 +54,18 @@ export function CompetitionCard({ competition }: { competition: Competition }) {
           </p>
         )}
         <ProgressStages status={competition.status} />
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          Next: {formatDate(competition.submission_deadline ?? competition.registration_deadline)}
-        </p>
+        {showNext && (
+          <div className="flex flex-col gap-0">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              Next: {nextDateStr}
+            </p>
+            {nextLabel && (
+              <p className="text-[10px] text-zinc-400 dark:text-zinc-500 leading-tight truncate">
+                {nextLabel}
+              </p>
+            )}
+          </div>
+        )}
         <Select
           aria-label={`Move ${competition.name} to a different status`}
           value={competition.status}

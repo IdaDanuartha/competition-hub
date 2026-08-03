@@ -25,28 +25,52 @@ const MODEL_OPTIONS = [
 ]
 
 function parseThemeString(text: string) {
-  if (!text || !text.trim()) return { mainTheme: '', subTheme: '', points: [], raw: text }
+  if (!text || !text.trim()) return { mainTheme: '', subTheme: '', points: [], subThemePoints: [], raw: text }
 
   let mainTheme = ''
   let subTheme = ''
   const points: string[] = []
+  const subThemePoints: string[] = []
 
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+
   if (lines.length > 1) {
+    let inSubThemeSection = false
+
     for (const line of lines) {
-      if (/^(?:poin|fokus|kategori)\s*(?:\/|\&|dan)?\s*sdgs?\s*:?/i.test(line) || line.trim().endsWith(':')) {
+      // Skip pure header lines like "Sub-Tema:" or "Poin SDGs:"
+      if (/^(?:poin|fokus|kategori)\s*(?:\/|\&|dan)?\s*sdgs?\s*:?$/i.test(line)) {
         continue
       }
 
       if (/^(?:Tema Utama|Tema)\s*:/i.test(line)) {
+        inSubThemeSection = false
         mainTheme = line.replace(/^(?:Tema Utama|Tema)\s*:\s*/i, '').trim()
       } else if (/^(?:Sub-Tema|Subtema|Fokus Kegiatan|Fokus)\s*:/i.test(line)) {
-        subTheme = line.replace(/^(?:Sub-Tema|Subtema|Fokus Kegiatan|Fokus)\s*:\s*/i, '').trim()
+        // Check if there's a value inline (e.g. "Sub-Tema: Smart City")
+        const inlineVal = line.replace(/^(?:Sub-Tema|Subtema|Fokus Kegiatan|Fokus)\s*:\s*/i, '').trim()
+        // Ignore if the inline value is just a number or very short non-meaningful text
+        if (inlineVal && !/^\d+$/.test(inlineVal) && inlineVal !== '(Tidak ada sub-tema spesifik)') {
+          subTheme = inlineVal
+          inSubThemeSection = false
+        } else {
+          // Sub-themes are on subsequent bullet lines
+          inSubThemeSection = true
+        }
       } else if (/^(?:\d+\.|\-|\*)\s*/.test(line)) {
         const item = line.replace(/^(?:\d+\.|\-|\*)\s*/, '').trim()
-        if (item) points.push(item)
+        if (item) {
+          if (inSubThemeSection) {
+            subThemePoints.push(item)
+          } else {
+            points.push(item)
+          }
+        }
       } else if (line.toLowerCase().includes('sdg') && !line.toLowerCase().startsWith('poin')) {
+        inSubThemeSection = false
         points.push(line.trim())
+      } else {
+        inSubThemeSection = false
       }
     }
   }
@@ -56,7 +80,11 @@ function parseThemeString(text: string) {
     const subMatch = text.match(/(?:Sub-Tema|Subtema)\s*(?:Hackathon)?\s*:\s*([^.\n]+|\"[^\"]+\"|'[^']+')/i)
 
     if (mainMatch) mainTheme = mainMatch[1].trim()
-    if (subMatch) subTheme = subMatch[1].trim()
+    if (subMatch) {
+      const val = subMatch[1].trim()
+      // Ignore if sub-theme is just a number
+      if (!/^\d+$/.test(val)) subTheme = val
+    }
 
     const quotes = Array.from(text.matchAll(/["“]([^"”]+)["”]/g)).map((m) => m[1].trim())
     if (!mainTheme && quotes.length >= 1) mainTheme = quotes[0]
@@ -74,13 +102,13 @@ function parseThemeString(text: string) {
   mainTheme = mainTheme.replace(/^["'“]|["'”]$/g, '').trim()
   subTheme = subTheme.replace(/^["'“]|["'”]$/g, '').trim()
 
-  return { mainTheme, subTheme, points, raw: text }
+  return { mainTheme, subTheme, points, subThemePoints, raw: text }
 }
 
 function FormattedThemeFocus({ text }: { text: string }) {
-  const { mainTheme, subTheme, points, raw } = parseThemeString(text)
+  const { mainTheme, subTheme, points, subThemePoints, raw } = parseThemeString(text)
 
-  if (!mainTheme && !subTheme && points.length === 0) {
+  if (!mainTheme && !subTheme && subThemePoints.length === 0 && points.length === 0) {
     return (
       <div className="mt-2 space-y-1 text-zinc-600 dark:text-zinc-400">
         <p className="leading-relaxed">{raw}</p>
@@ -102,15 +130,27 @@ function FormattedThemeFocus({ text }: { text: string }) {
         </div>
       )}
 
-      {subTheme && (
+      {(subTheme || subThemePoints.length > 0) && (
         <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3.5 shadow-2xs dark:border-sky-900/60 dark:bg-sky-950/30">
           <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-sky-700 dark:text-sky-400 uppercase">
             <Layers className="h-3.5 w-3.5" />
             <span>Sub-Tema / Fokus Kegiatan</span>
           </div>
-          <p className="mt-1 font-medium text-zinc-800 dark:text-zinc-200 text-sm leading-snug">
-            {subTheme}
-          </p>
+          {subTheme && (
+            <p className="mt-1 font-medium text-zinc-800 dark:text-zinc-200 text-sm leading-snug">
+              {subTheme}
+            </p>
+          )}
+          {subThemePoints.length > 0 && (
+            <ul className="mt-1.5 space-y-1">
+              {subThemePoints.map((pt, idx) => (
+                <li key={idx} className="flex items-start gap-1.5 text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                  <span className="mt-0.5 text-sky-500">•</span>
+                  <span>{pt}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

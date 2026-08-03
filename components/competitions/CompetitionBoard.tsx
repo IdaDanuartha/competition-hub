@@ -4,16 +4,20 @@ import { useState } from 'react'
 import { CompetitionCard } from './CompetitionCard'
 import { STATUS_ORDER, statusLabel } from '@/lib/status'
 import { useUpdateCompetitionStatus } from '@/hooks/useCompetitions'
+import { useNextRundownDates } from '@/hooks/useNextRundownDates'
 import type { Competition, CompetitionStatus } from '@/lib/types/database'
+import type { NextRundownEntry } from '@/hooks/useNextRundownDates'
 
 function BoardColumn({
   status,
   items,
   onDropStatus,
+  nextRundownMap,
 }: {
   status: CompetitionStatus
   items: Competition[]
   onDropStatus: (id: string, newStatus: CompetitionStatus) => void
+  nextRundownMap: Map<string, NextRundownEntry>
 }) {
   const [isOver, setIsOver] = useState(false)
 
@@ -55,7 +59,13 @@ function BoardColumn({
             </p>
           </div>
         ) : (
-          items.map((c) => <CompetitionCard key={c.id} competition={c} />)
+          items.map((c) => (
+            <CompetitionCard
+              key={c.id}
+              competition={c}
+              nextRundown={nextRundownMap.get(c.id)}
+            />
+          ))
         )}
       </div>
     </div>
@@ -64,6 +74,8 @@ function BoardColumn({
 
 export function CompetitionBoard({ competitions }: { competitions: Competition[] }) {
   const { mutate: updateStatus } = useUpdateCompetitionStatus()
+  const ids = competitions.map((c) => c.id)
+  const { data: nextRundownMap = new Map() } = useNextRundownDates(ids)
 
   function handleDropStatus(id: string, newStatus: CompetitionStatus) {
     updateStatus({ id, status: newStatus })
@@ -79,6 +91,7 @@ export function CompetitionBoard({ competitions }: { competitions: Competition[]
             status={status}
             items={items}
             onDropStatus={handleDropStatus}
+            nextRundownMap={nextRundownMap}
           />
         )
       })}
