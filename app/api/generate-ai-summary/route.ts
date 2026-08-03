@@ -20,30 +20,33 @@ function parseIndonesianDateToIso(dateStr: string): string | null {
     desember: '12', des: '12',
   }
 
-  const strLower = dateStr.toLowerCase()
+  const strLower = dateStr.toLowerCase().trim()
 
-  // Match e.g. "31 Juli - 09 Agustus 2026" or "23 September 2026" or "31 Oktober 2026"
-  const match = strLower.match(/(?:(\d{1,2})\s+)?([a-z]+)(?:\s*(?:-|s\/d|\s)\s*\d{1,2}\s+[a-z]+)?\s+(\d{4})/)
-  if (match) {
-    const day = match[1] ? match[1].padStart(2, '0') : '01'
-    const monthName = match[2]
-    const year = match[3]
-    const month = months[monthName]
-    if (month && year) {
-      return `${year}-${month}-${day}T08:00:00.000Z`
-    }
+  // Pattern 1: Cross-month range "31 Juli - 09 Agustus 2026" or "31 Juli s/d 09 Agustus 2026"
+  const matchCrossMonth = strLower.match(/\d{1,2}\s+[a-z]+\s*(?:-|s\/d|\ss\/d\s|sampai)\s*(\d{1,2})\s+([a-z]+)\s+(\d{4})/)
+  if (matchCrossMonth) {
+    const day = matchCrossMonth[1].padStart(2, '0')
+    const month = months[matchCrossMonth[2]]
+    const year = matchCrossMonth[3]
+    if (month && year) return `${year}-${month}-${day}T12:00:00.000Z`
   }
 
-  // Fallback match e.g. "21-22 September 2026"
-  const matchRange = strLower.match(/(\d{1,2})\s*(?:-|\s*s\/d\s*)\s*\d{1,2}\s+([a-z]+)\s+(\d{4})/)
-  if (matchRange) {
-    const day = matchRange[1].padStart(2, '0')
-    const monthName = matchRange[2]
-    const year = matchRange[3]
-    const month = months[monthName]
-    if (month && year) {
-      return `${year}-${month}-${day}T08:00:00.000Z`
-    }
+  // Pattern 2: Same-month range "14 - 31 Juli 2026" or "14 s/d 31 Juli 2026"
+  const matchSameMonthRange = strLower.match(/\d{1,2}\s*(?:-|s\/d|\ss\/d\s|sampai)\s*(\d{1,2})\s+([a-z]+)\s+(\d{4})/)
+  if (matchSameMonthRange) {
+    const day = matchSameMonthRange[1].padStart(2, '0')
+    const month = months[matchSameMonthRange[2]]
+    const year = matchSameMonthRange[3]
+    if (month && year) return `${year}-${month}-${day}T12:00:00.000Z`
+  }
+
+  // Pattern 3: Single date "31 Juli 2026"
+  const matchSingle = strLower.match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/)
+  if (matchSingle) {
+    const day = matchSingle[1].padStart(2, '0')
+    const month = months[matchSingle[2]]
+    const year = matchSingle[3]
+    if (month && year) return `${year}-${month}-${day}T12:00:00.000Z`
   }
 
   return null
@@ -208,8 +211,9 @@ CRITICAL MANDATES FOR ABSOLUTE ACCURACY:
    - ONLY use dates and event names found DIRECTLY in the PDF guidebook. Do NOT invent or hallucinate any dates.
    - Look for the official schedule section titled "TIMELINE", "JADWAL", "RUNDOWN", or "AGENDA".
    - Extract EVERY event row with its EXACT date as written in the document.
-   - For the iso_date field: convert the start date of each event to a precise ISO 8601 string (e.g. if the guidebook says "21 Juni 2026 - 16 Oktober 2026", use "2026-06-21T08:00:00.000Z").
-   - If the event spans a range, use the START date for iso_date.
+   - For the iso_date field: convert the END DATE / DEADLINE date of each event (NOT the start date) to a precise ISO 8601 string with default time 12:00:00 PM (12 siang).
+   - EXAMPLE: If the guidebook says "14 - 31 Juli 2026", use the END date 31 Juli 2026, so iso_date = "2026-07-31T12:00:00.000Z".
+   - EXAMPLE: If the guidebook says "5 - 13 Juli 2026", use the END date 13 Juli 2026, so iso_date = "2026-07-13T12:00:00.000Z".
    - Do NOT make up dates. If unsure, use the year from the document context.
 
 Return ONLY a valid JSON object matching this schema:
@@ -229,9 +233,9 @@ Return ONLY a valid JSON object matching this schema:
   "rundown_timeline": [
     {
       "title": "Nama Agenda Resmi dari Tabel Dokumen",
-      "date_str": "Tanggal lengkap persis seperti di dokumen (contoh: 21 Juni 2026 - 16 Oktober 2026)",
+      "date_str": "Tanggal lengkap persis seperti di dokumen (contoh: 14 - 31 Juli 2026)",
       "description": "Keterangan detail kegiatan dari dokumen",
-      "iso_date": "ISO 8601 string dari tanggal MULAI event (contoh: 2026-06-21T08:00:00.000Z)"
+      "iso_date": "ISO 8601 string dari tanggal AKHIR/DEADLINE event dengan jam default 12 siang (contoh untuk 14 - 31 Juli 2026 gunakan: 2026-07-31T12:00:00.000Z)"
     }
   ]
 }`
@@ -416,25 +420,27 @@ Inspect all pages and tables in the PDF document. Extract the real, actual overv
       await supabase.from('rundown_items').delete().eq('competition_id', competition_id).eq('is_auto_generated', true)
 
       const rundownInserts = parsedResult.rundown_timeline.map((item: any) => {
-        // Priority 1: Trust AI's iso_date if it's a valid date string
-        let validIsoDate: string | null = null
-        if (item.iso_date && !isNaN(Date.parse(item.iso_date))) {
+        // Priority 1: Parse date_str using Indonesian parser (which extracts the END date & sets 12:00 PM)
+        let validIsoDate: string | null = parseIndonesianDateToIso(item.date_str || '')
+
+        // Priority 2: Use AI's iso_date if available
+        if (!validIsoDate && item.iso_date && !isNaN(Date.parse(item.iso_date))) {
           validIsoDate = item.iso_date
         }
 
-        // Priority 2: Parse the date_str using our Indonesian date parser as fallback
-        if (!validIsoDate) {
-          validIsoDate = parseIndonesianDateToIso(item.date_str || '')
-        }
-
-        // Priority 3: Try parsing from title as last resort
+        // Priority 3: Try parsing from title
         if (!validIsoDate) {
           validIsoDate = parseIndonesianDateToIso(item.title || '')
         }
 
-        // Final fallback: use current date (should rarely happen)
+        // Priority 4: Fallback
         if (!validIsoDate) {
           validIsoDate = new Date().toISOString()
+        }
+
+        // Ensure default time is 12:00:00 (12 siang) if time part is 00:00 or 08:00
+        if (validIsoDate.includes('T00:00:00') || validIsoDate.includes('T08:00:00')) {
+          validIsoDate = validIsoDate.replace(/T\d{2}:\d{2}:\d{2}/, 'T12:00:00')
         }
 
         const description = item.description
