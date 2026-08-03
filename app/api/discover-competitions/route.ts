@@ -44,40 +44,85 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'keywords required' }, { status: 400 })
     }
 
-    const { geminiKeys } = await getEffectiveApiKeys()
+    const { geminiKeys, openaiKey } = await getEffectiveApiKeys()
 
-    if (geminiKeys.length === 0) {
+    if (geminiKeys.length === 0 && !openaiKey) {
       return NextResponse.json(
-        { error: 'Fitur ini butuh Gemini API key (untuk web search grounding). Tambahkan Gemini API key di Settings.' },
+        { error: 'Fitur ini membutuhkan Gemini atau OpenAI API Key. Silakan tambahkan API key di Settings.' },
         { status: 400 }
       )
     }
 
-    const userPromptText = `Find real competitions matching these keywords: "${keywords}".`
+    const userPromptText = `Find real, open, or upcoming competitions matching these keywords: "${keywords}".`
 
-    let geminiModels = ['gemini-3.6-flash', 'gemini-2.5-flash']
+    let geminiModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']
     if (preferred_model && preferred_model.startsWith('gemini')) {
       geminiModels = [preferred_model, ...geminiModels.filter((m) => m !== preferred_model)]
     }
 
     let parsedResult: { results: DiscoveredCompetition[] } | null = null
-    let modelUsed = preferred_model || 'gemini-3.6-flash'
-    let lastErrorMessage = 'AI generation failed'
+    let modelUsed = preferred_model || 'gemini-2.5-flash'
+    let lastErrorMessage = 'Gagal mencari kompetisi'
 
-    for (let keyIdx = 0; keyIdx < geminiKeys.length; keyIdx++) {
-      const currentGeminiKey = geminiKeys[keyIdx]
+    // Attempt 1: Gemini with Google Search Grounding
+    if (geminiKeys.length > 0) {
+      for (let keyIdx = 0; keyIdx < geminiKeys.length; keyIdx++) {
+        const currentGeminiKey = geminiKeys[keyIdx]
 
-      for (const modelName of geminiModels) {
+        for (const modelName of geminiModels) {
+          try {
+            const res = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentGeminiKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+                  contents: [{ parts: [{ text: userPromptText }] }],
+                  tools: [{ google_search: {} }],
+                  generationConfig: { responseMimeType: 'application/json' },
+                }),
+                signal: AbortSignal.timeout(25000),
+              }
+            )
+
+            if (res.ok) {
+              const data = await res.json()
+              const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
+              if (rawText) {
+                parsedResult = JSON.parse(rawText)
+                modelUsed = modelName
+                break
+              }
+            } else if (res.status === 429) {
+              lastErrorMessage = `Rate limit (HTTP 429) pada key #${keyIdx + 1}. Mencoba failover...`
+              // Short delay before trying next key/model
+              await new Promise((r) => setTimeout(r, 400))
+            } else {
+              lastErrorMessage = `Model ${modelName} mengembalikan HTTP status ${res.status}`
+            }
+          } catch (e: any) {
+            lastErrorMessage = e?.message || 'Timeout'
+          }
+        }
+
+        if (parsedResult) break
+      }
+    }
+
+    // Attempt 2: Fallback without google_search tool if Grounding hit 429 Rate Limit
+    if (!parsedResult && geminiKeys.length > 0) {
+      for (let keyIdx = 0; keyIdx < geminiKeys.length; keyIdx++) {
+        const currentGeminiKey = geminiKeys[keyIdx]
         try {
           const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentGeminiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${currentGeminiKey}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
                 contents: [{ parts: [{ text: userPromptText }] }],
-                tools: [{ google_search: {} }],
                 generationConfig: { responseMimeType: 'application/json' },
               }),
               signal: AbortSignal.timeout(25000),
@@ -89,25 +134,53 @@ export async function POST(req: Request) {
             const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
             if (rawText) {
               parsedResult = JSON.parse(rawText)
-              modelUsed = modelName
+              modelUsed = 'gemini-2.5-flash (knowledge)'
               break
             }
-          } else if (res.status === 429) {
-            lastErrorMessage = `Rate limit (HTTP 429) pada key #${keyIdx + 1}`
-            break
-          } else {
-            lastErrorMessage = `Model ${modelName} mengembalikan HTTP status ${res.status}`
           }
-        } catch (e: any) {
-          lastErrorMessage = e?.message || 'Timeout'
-        }
+        } catch {}
       }
+    }
 
-      if (parsedResult) break
+    // Attempt 3: OpenAI Fallback if available
+    if (!parsedResult && openaiKey) {
+      try {
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${openaiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'user', content: userPromptText },
+            ],
+            response_format: { type: 'json_object' },
+          }),
+          signal: AbortSignal.timeout(25000),
+        })
+
+        if (res.ok) {
+          const data = await res.json()
+          const rawText = data.choices?.[0]?.message?.content
+          if (rawText) {
+            parsedResult = JSON.parse(rawText)
+            modelUsed = 'gpt-4o-mini'
+          }
+        }
+      } catch {}
     }
 
     if (!parsedResult) {
-      return NextResponse.json({ error: lastErrorMessage }, { status: 502 })
+      return NextResponse.json(
+        {
+          error:
+            'Batas kuota / Rate limit (HTTP 429) Gemini API tercapai pada seluruh key. Mohon tunggu ~10 detik dan klik "Coba lagi".',
+        },
+        { status: 429 }
+      )
     }
 
     return NextResponse.json({
