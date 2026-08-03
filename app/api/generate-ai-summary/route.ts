@@ -196,42 +196,54 @@ export async function POST(req: Request) {
     const wordCount = pdfExtractedText ? pdfExtractedText.split(/\s+/).length : 0
     addLog(`[4/6] Mesin Ekstraksi Teks: ${wordCount} kata terekstrak dari PDF (${pdfExtractedText.length} karakter)`)
 
-    const systemPromptText = `You are a strict, highly meticulous competition guidebook parser.
+    const systemPromptText = `You are a world-class, extremely thorough competition guidebook parser.
 
-Your task is to analyze the attached competition guidebook PDF file (both visually and from text) and extract 100% truthful, precise facts in Bahasa Indonesia.
+Your task is to analyze the attached competition guidebook PDF file (both visually and from text) and extract 100% truthful, comprehensive facts in Bahasa Indonesia.
 
-CRITICAL MANDATES FOR ABSOLUTE ACCURACY:
-1. OVERVIEW: Write a concise overview (3-5 sentences) summarizing the exact competition background, organizer, and target audience directly written in the guidebook.
-2. TEMA UTAMA & SUB-TEMA:
-   - Extract the EXACT main theme stated in the document under "TEMA" or "FOKUS UTAMA".
-   - Extract ALL specific sub-themes listed in the document. If the guidebook lists multiple sub-themes (e.g. "Smart City", "Green Economy"), list them ALL separated by newlines with "-" prefix.
-   - NEVER output just "1" or a number as the sub-theme. If no sub-theme is stated, write "(Tidak ada sub-tema spesifik)".
-3. BIAYA PENDAFTARAN / REGISTRATION FEE (CRITICAL):
-   - Search the document thoroughly for sections titled "BIAYA PENDAFTARAN", "REGISTRATION FEE", "BIAYA REGISTRASI", "BIAYA", "HARGA", or "PENDAFTARAN".
-   - Extract ALL registration fee tiers, batches, or pricing options mentioned in the document.
-   - EXAMPLE: "Batch 1 (Early Bird): Rp 100.000 / tim (1 - 15 Juli 2026)\nBatch 2 (Regular): Rp 150.000 / tim (16 - 31 Juli 2026)"
-   - EXAMPLE: "Rp 50.000 / peserta"
-   - EXAMPLE: "Gratis / Tidak dipungut biaya (Rp 0)"
-   - Format cleanly using line breaks or bullet points. If no fee is mentioned anywhere in the guidebook, write "Informasi biaya tidak tercantum dalam guidebook".
-4. KEY REQUIREMENTS: Extract all specific eligibility requirements, team sizes, mandatory submission files, and rules mentioned in the guidebook.
-5. JUDGING CRITERIA: Extract all judging criteria and their exact percentage weights written in the document.
-6. RUNDOWN TIMELINE TABLE (CRITICAL - READ THE PDF CAREFULLY):
-   - ONLY use dates and event names found DIRECTLY in the PDF guidebook. Do NOT invent or hallucinate any dates.
-   - Look for the official schedule section titled "TIMELINE", "JADWAL", "RUNDOWN", or "AGENDA".
-   - Extract EVERY event row with its EXACT date as written in the document.
-   - For the iso_date field: convert the END DATE / DEADLINE date of each event (NOT the start date) to a precise ISO 8601 string with default time 12:00:00 PM (12 siang).
-   - EXAMPLE: If the guidebook says "14 - 31 Juli 2026", use the END date 31 Juli 2026, so iso_date = "2026-07-31T12:00:00.000Z".
-   - EXAMPLE: If the guidebook says "5 - 13 Juli 2026", use the END date 13 Juli 2026, so iso_date = "2026-07-13T12:00:00.000Z".
-   - Do NOT make up dates. If unsure, use the year from the document context.
+CRITICAL MANDATES FOR ABSOLUTE ACCURACY & COMPLETENESS:
+
+1. OVERVIEW:
+   - Write a clear, informative overview (3-5 sentences) summarizing the exact competition background, organizer name, target audience, and main objective stated in the guidebook.
+
+2. TEMA UTAMA & SUB-TEMA / KATEGORI LOMBA:
+   - "Tema Utama": Extract the overall theme or main focus of the competition event.
+   - "Sub-Tema / Kategori Lomba": Extract ALL sub-themes, tracks, or specific competition categories listed in the document (e.g., "Software Development", "UI/UX Design", "Capture The Flag", "Smart City", etc.).
+   - ALWAYS list every category or sub-theme separated by newlines with "-" prefix under "Sub-Tema:". Never skip them or write generic fallback if categories exist.
+
+3. BIAYA PENDAFTARAN / REGISTRATION FEE (EXTREMELY CRITICAL):
+   - Scour the ENTIRE document for any section, table, or paragraph discussing fees, pricing, HTM, investment, registration costs, or entry fees.
+   - Look for terms like: "Biaya", "Pendaftaran", "HTM", "Registrasi", "Investasi", "Rp", "IDR", "Gratis", "Free", "Batch", "Early Bird", "Regular".
+   - If fees vary by competition category or registration period (Batch 1, Batch 2, Early Bird, Regular, Mahasiswa vs Umum), list ALL options clearly formatted with newlines.
+   - EXAMPLE: "Software Development: Rp 150.000 / tim\nCapture The Flag: Rp 100.000 / tim"
+   - EXAMPLE: "Batch 1 (Early Bird): Rp 100.000 (1 - 15 Juli 2026)\nBatch 2 (Regular): Rp 150.000 (16 - 31 Juli 2026)"
+   - ONLY if the document explicitly states it is free or no price appears anywhere in all pages, write "Gratis / Tidak dipungut biaya".
+
+4. KEY REQUIREMENTS:
+   - Extract ALL eligibility requirements, team size limits (min/max), required submission files/proposal formats, and mandatory rules stated in the guidebook.
+
+5. JUDGING CRITERIA (KRITERIA PENILAIAN):
+   - Extract EVERY judging criterion with its exact percentage weight.
+   - IF the document specifies stages (e.g. Penyisihan vs Final), prefix each criterion with the stage name (e.g. "Babak Penyisihan - UI/UX (25%)", "Babak Final - Presentasi & Pitching (40%)").
+   - IF no stages are mentioned, prefix with "Kriteria Umum - [Nama Kriteria] ([Bobot]%)".
+
+6. COMPLETE RUNDOWN TIMELINE (EXTRACT ALL AGENDA STAGES):
+   - Extract EVERY SINGLE event/stage in the official schedule (Pendaftaran, Pengumpulan Karya, Batas Pendaftaran, Technical Meeting, Babak Penyisihan, Pengumuman Finalis, Babak Final, Awarding/Pengumuman Pemenang).
+   - DO NOT stop after 1 or 2 items. Extract the COMPLETE timeline from start to finish as listed in the PDF.
+   - ONLY use real dates written in the PDF document.
+   - For the iso_date field: convert the END DATE / DEADLINE of each agenda item to a precise ISO 8601 string with time default 12:00:00 PM (12 siang) (e.g., for "1 - 15 Juli 2026", use "2026-07-15T12:00:00.000Z").
 
 Return ONLY a valid JSON object matching this schema:
 {
   "summary": "Deskripsi murni kompetisi berdasarkan dokumen resmi.",
-  "theme_and_subtheme": "Tema Utama: [Tema Resmi Dokumen]\nSub-Tema:\n- [Sub-Tema 1]\n- [Sub-Tema 2]",
-  "registration_fee": "Batch 1 (Early Bird): Rp 100.000 / tim (1 - 15 Juli 2026)\nBatch 2 (Regular): Rp 150.000 / tim (16 - 31 Juli 2026)",
+  "theme_and_subtheme": "Tema Utama: [Tema Resmi]\nSub-Tema:\n- [Kategori/Sub-Tema 1]\n- [Kategori/Sub-Tema 2]",
+  "registration_fee": "Batch 1 (Early Bird): Rp 100.000 / tim\nBatch 2 (Regular): Rp 150.000 / tim",
   "key_requirements": ["Syarat 1", "Syarat 2", "Syarat 3"],
   "important_dates": ["Tanggal 1", "Tanggal 2"],
-  "judging_criteria": ["Kriteria 1 (bobot %)", "Kriteria 2 (bobot %)"],
+  "judging_criteria": [
+    "Babak Penyisihan - Keterampilan Teknis (30%)",
+    "Babak Penyisihan - Inovasi Solusi (30%)",
+    "Babak Final - Presentasi & QnA (40%)"
+  ],
   "project_idea_suggestions": [
     {
       "title": "Judul Rekomendasi Ide Proyek",
@@ -242,16 +254,18 @@ Return ONLY a valid JSON object matching this schema:
   "rundown_timeline": [
     {
       "title": "Nama Agenda Resmi dari Tabel Dokumen",
-      "date_str": "Tanggal lengkap persis seperti di dokumen (contoh: 14 - 31 Juli 2026)",
+      "date_str": "Tanggal lengkap persis seperti di dokumen (contoh: 1 - 15 Juli 2026)",
       "description": "Keterangan detail kegiatan dari dokumen",
-      "iso_date": "ISO 8601 string dari tanggal AKHIR/DEADLINE event dengan jam default 12 siang (contoh untuk 14 - 31 Juli 2026 gunakan: 2026-07-31T12:00:00.000Z)"
+      "iso_date": "ISO 8601 string dari tanggal AKHIR/DEADLINE event dengan jam default 12 siang"
     }
   ]
 }`
 
     const userPromptText = `Analyze the attached guidebook PDF document for competition "${competition.name}".
-${pdfExtractedText ? `\n--- EXTRACTED TEXT CONTENT FROM PDF GUIDEBOOK ---\n${pdfExtractedText.slice(0, 18000)}\n--- END EXTRACTED TEXT ---\n` : ''}
-Inspect all pages and tables in the PDF document. Extract the real, actual overview, main theme, subthemes, registration fee details, key requirements, judging criteria, and ALL timeline rundown dates strictly from the PDF document content above.`
+${pdfExtractedText ? `\n--- EXTRACTED TEXT CONTENT FROM PDF GUIDEBOOK ---\n${pdfExtractedText}\n--- END EXTRACTED TEXT ---\n` : ''}
+Inspect ALL pages, tables, images, and pricing sections in the PDF document.
+Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Registration Fees (for all categories/batches), Eligibility Requirements, ALL Judging Criteria (with stage prefixes and % weights), and ALL Rundown Timeline Dates from start to finish.`
+
 
     let parsedResult: any = null
     let modelUsed = preferred_model || 'gemini-3.6-flash'
