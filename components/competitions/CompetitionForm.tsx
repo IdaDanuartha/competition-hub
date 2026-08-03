@@ -73,6 +73,8 @@ export function CompetitionForm({
     defaultValues?.organizer,
     defaultValues?.theme,
     defaultValues?.team_name,
+    defaultValues?.instagram_url,
+    defaultValues?.website_url,
     defaultValues?.registration_deadline,
     defaultValues?.submission_deadline,
     defaultValues?.event_start_at,

@@ -336,6 +336,14 @@ Return ONLY a valid JSON object matching this schema:
       "rationale": "Alasan ide ini kuat"
     }
   ],
+  "extracted_info": {
+    "organizer": "Nama pihak/lembaga penyelenggara resmi lomba (contoh: Puspresnas / Universitas Indonesia)",
+    "theme": "Tema utama atau gambaran topik kompetisi (contoh: Digital Innovation for Sustainability)",
+    "instagram_url": "URL Instagram resmi lomba jika ditemukan dalam dokumen (misal https://instagram.com/...), atau null jika tidak ada",
+    "website_url": "URL website resmi lomba jika ditemukan dalam dokumen (misal https://...), atau null jika tidak ada",
+    "location": "Lokasi pelaksanaan lomba (contoh: Online, Hybrid, atau nama tempat/kota), atau null jika tidak ada",
+    "notes": "Catatan ringkas penting tambahan (kontak person, email, discord, dll), atau null"
+  },
   "extracted_deadlines": {
     "registration_deadline_iso": "ISO 8601 string tanggal akhir gelombang pendaftaran terakhir",
     "submission_deadline_iso": "ISO 8601 string tanggal terakhir submit proposal/project",
@@ -567,13 +575,49 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
     }
 
 
-    // 1. Auto update competition dates columns (registration, submission, start, end) from AI extraction
+    // 1. Auto update competition dates & metadata columns from AI extraction
     const compDates = computeCompetitionDates(parsedResult)
     const compUpdatePayload: Record<string, any> = {}
     if (compDates.registration_deadline) compUpdatePayload.registration_deadline = compDates.registration_deadline
     if (compDates.submission_deadline) compUpdatePayload.submission_deadline = compDates.submission_deadline
     if (compDates.event_start_at) compUpdatePayload.event_start_at = compDates.event_start_at
     if (compDates.event_end_at) compUpdatePayload.event_end_at = compDates.event_end_at
+
+    // Extract additional metadata fields (organizer, theme, instagram_url, website_url, location, notes)
+    const extInfo = parsedResult.extracted_info || {}
+    if (extInfo.organizer && typeof extInfo.organizer === 'string' && extInfo.organizer.trim()) {
+      compUpdatePayload.organizer = extInfo.organizer.trim()
+    }
+    if (extInfo.theme && typeof extInfo.theme === 'string' && extInfo.theme.trim()) {
+      compUpdatePayload.theme = extInfo.theme.trim()
+    } else if (parsedResult.theme_and_subtheme && typeof parsedResult.theme_and_subtheme === 'string') {
+      const firstLine = parsedResult.theme_and_subtheme.split('\n')[0].replace(/^Tema Utama:\s*/i, '').trim()
+      if (firstLine && firstLine !== '[Tema Resmi]') {
+        compUpdatePayload.theme = firstLine
+      }
+    }
+
+    if (extInfo.instagram_url && typeof extInfo.instagram_url === 'string') {
+      const cleanIg = extInfo.instagram_url.trim()
+      if (/^https?:\/\/(www\.)?instagram\.com\//i.test(cleanIg)) {
+        compUpdatePayload.instagram_url = cleanIg
+      }
+    }
+
+    if (extInfo.website_url && typeof extInfo.website_url === 'string') {
+      const cleanWeb = extInfo.website_url.trim()
+      if (/^https?:\/\//i.test(cleanWeb)) {
+        compUpdatePayload.website_url = cleanWeb
+      }
+    }
+
+    if (extInfo.location && typeof extInfo.location === 'string' && extInfo.location.trim()) {
+      compUpdatePayload.location = extInfo.location.trim()
+    }
+
+    if (extInfo.notes && typeof extInfo.notes === 'string' && extInfo.notes.trim()) {
+      compUpdatePayload.notes = extInfo.notes.trim()
+    }
 
     if (Object.keys(compUpdatePayload).length > 0) {
       const { error: compUpdateErr } = await (supabase as any)
@@ -582,9 +626,9 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
         .eq('id', competition_id)
 
       if (compUpdateErr) {
-        addLog(`⚠️ Gagal memperbarui kolom tanggal kompetisi: ${compUpdateErr.message}`)
+        addLog(`⚠️ Gagal memperbarui kolom kompetisi: ${compUpdateErr.message}`)
       } else {
-        addLog(`✓ 4 Kolom Tanggal Kompetisi (Registration, Submission, Start, End) berhasil ter-update otomatis`)
+        addLog(`✓ ${Object.keys(compUpdatePayload).length} Kolom Metadata Kompetisi (Tanggal, Organizer, Theme, Links, Location, Notes) berhasil ter-update otomatis`)
       }
     }
 
