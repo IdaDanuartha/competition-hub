@@ -44,6 +44,27 @@ export function useCreateRundownItem(competitionId: string) {
   })
 }
 
+export function useUpdateRundownItem(competitionId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, values }: { id: string; values: RundownItemFormValues }) => {
+      const supabase = createClient()
+      const eventAtIso = values.event_at
+        ? new Date(values.event_at).toISOString()
+        : values.event_at
+      const { error } = await supabase
+        .from('rundown_items')
+        .update({ title: values.title, description: values.description, event_at: eventAtIso })
+        .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rundown-items', competitionId] })
+      queryClient.invalidateQueries({ queryKey: ['next-rundown-dates'] })
+    },
+  })
+}
+
 export function useDeleteRundownItem(competitionId: string) {
   const queryClient = useQueryClient()
   return useMutation({

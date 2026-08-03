@@ -12,6 +12,7 @@ export interface ModelOption {
 export interface ModelStatus {
   status: 'active' | 'rate_limited' | 'key_missing' | 'error'
   message?: string
+  credit?: string | null
 }
 
 interface ModelSelectorProps {
@@ -110,6 +111,7 @@ export function ModelSelector({
             {options.map((opt) => {
               const isSelected = opt.value === selectedModel
               const st = modelStatuses[opt.value]?.status || 'active'
+              const credit = modelStatuses[opt.value]?.credit
               return (
                 <button
                   key={opt.value}
@@ -132,6 +134,11 @@ export function ModelSelector({
                     )}
                     <div className="min-w-0">
                       <p className="truncate font-medium leading-snug">{opt.label}</p>
+                      {credit && (
+                        <p className="text-[10px] text-zinc-400 dark:text-zinc-500 leading-tight truncate">
+                          {credit}
+                        </p>
+                      )}
                     </div>
                   </div>
 
