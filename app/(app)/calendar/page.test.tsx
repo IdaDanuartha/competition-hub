@@ -4,10 +4,19 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import CalendarPage from './page'
 import type { CalendarRundownItem } from '@/hooks/useCalendarRundownItems'
 
+// Pick a fixed day-of-month that is deterministically NOT today, in the same
+// UTC month/year as `currentMonth`'s default (the current month), so the
+// event lands on a current-month grid cell other than the one selected by
+// default (today). Falls back to the 6th on the rare day today is the 5th,
+// to avoid flaking near month boundaries.
+const today = new Date()
+const mockEventDay = today.getUTCDate() === 5 ? 6 : 5
+const mockEventDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), mockEventDay, 12, 0, 0))
+
 const mockEvent: CalendarRundownItem = {
   id: '1',
   title: 'Submission deadline',
-  event_at: new Date().toISOString(),
+  event_at: mockEventDate.toISOString(),
   competition_id: 'c1',
   auto_source: 'submission_deadline',
   competitions: { name: 'BYTESFEST', status: 'in_progress' },
@@ -26,21 +35,28 @@ describe('CalendarPage', () => {
 
   it('shows day details after clicking a day with an event', () => {
     render(<CalendarPage />)
-    const today = new Date()
+
+    // "Submission deadline" is both the event title (rendered in the day
+    // list) and the legend's category label for that same category, so we
+    // scope every check to <p> elements — the event-title element in
+    // CalendarDayList — never the legend's <div>.
+    const titleParagraphs = () => screen.getAllByText('Submission deadline').filter((el) => el.tagName === 'P')
+
+    // Default-selected day is today, which has no events (the mock event is
+    // on mockEventDay, not today) — proves the initial render shows nothing
+    // for today, so the later assertion can't pass "for free".
+    expect(titleParagraphs()).toHaveLength(0)
+
     // The grid shows spillover days from adjacent months, which can share the
-    // same day-of-month digit as today (e.g. today is the 3rd and a trailing
-    // spillover day is also the 3rd) — scope to the current-month cell.
-    const todayButton = screen
-      .getAllByText(String(today.getUTCDate()))
+    // same day-of-month digit as the target day — scope to the current-month
+    // cell via the `data-current-month` attribute.
+    const targetButton = screen
+      .getAllByText(String(mockEventDay))
       .map((el) => el.closest('button'))
       .find((button) => button?.getAttribute('data-current-month') === 'true') as HTMLElement
-    fireEvent.click(todayButton)
-    // "Submission deadline" is both the event title (rendered in the day list)
-    // and the legend's category label for that same category — scope to the
-    // title element (a <p>) so the assertion checks the actual event, not the
-    // legend text that was already on screen before the click.
-    const titleMatches = screen.getAllByText('Submission deadline').filter((el) => el.tagName === 'P')
-    expect(titleMatches).toHaveLength(1)
-    expect(titleMatches[0]).toBeInTheDocument()
+    fireEvent.click(targetButton)
+
+    // Clicking the target day updated `selectedDay`, so its event now shows.
+    expect(titleParagraphs()).toHaveLength(1)
   })
 })
