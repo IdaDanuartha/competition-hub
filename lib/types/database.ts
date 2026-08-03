@@ -91,7 +91,10 @@ export type UserSettings = {
   timezone: string
   rundown_generation_mode: RundownGenerationMode
   theme_preference: ThemePreference
+  gemini_api_key?: string | null
+  openai_api_key?: string | null
 }
+
 
 export type ProjectIdeaSuggestion = {
   title: string

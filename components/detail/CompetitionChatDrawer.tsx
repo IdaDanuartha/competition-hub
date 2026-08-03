@@ -127,6 +127,8 @@ const QUICK_PROMPTS = [
   { text: 'Berikan rekomendasi ide karya yang cocok', icon: Lightbulb, color: 'text-yellow-500' },
 ]
 
+import { usePreferredModel } from '@/hooks/usePreferredModel'
+
 export function CompetitionChatDrawer({ competitionId, competitionName }: CompetitionChatDrawerProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
@@ -136,12 +138,8 @@ export function CompetitionChatDrawer({ competitionId, competitionName }: Compet
 
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [preferredModel, setPreferredModel] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('ai-chat-model') || 'gemini-3.6-flash'
-    }
-    return 'gemini-3.6-flash'
-  })
+  const [preferredModel, setPreferredModel] = usePreferredModel('gemini-3.6-flash')
+
   const [modelStatuses, setModelStatuses] = useState<Record<string, { status: any; message: string }>>({})
   const [copiedId, setCopiedId] = useState<string | null>(null)
 

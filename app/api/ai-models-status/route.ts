@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { getEffectiveApiKeys } from '@/lib/get-api-keys'
+
 
 interface ModelResult {
   status: 'active' | 'rate_limited' | 'key_missing' | 'error'
@@ -58,12 +60,10 @@ async function fetchGeminiInfo(apiKey: string, modelId: string): Promise<{ statu
 }
 
 export async function GET() {
-  const rawGeminiKey = process.env.GEMINI_API_KEY
-  const geminiKey = rawGeminiKey ? rawGeminiKey.replace(/^[\"']|[\"']$/g, '') : undefined
-  const rawOpenaiKey = process.env.OPENAI_API_KEY
-  const openaiKey = rawOpenaiKey ? rawOpenaiKey.replace(/^[\"']|[\"']$/g, '') : undefined
+  const { geminiKey, openaiKey } = await getEffectiveApiKeys()
 
   const results: Record<string, ModelResult> = {}
+
 
   // ── Gemini models ────────────────────────────────────────────────
   const modelsToCheck = [

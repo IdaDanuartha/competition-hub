@@ -9,6 +9,8 @@ import { ModelSelector } from '@/components/ui/ModelSelector'
 import { useProposalReviews, useReviewProposal } from '@/hooks/useProposalReview'
 import type { ProposalReview } from '@/lib/types/database'
 
+import { usePreferredModel } from '@/hooks/usePreferredModel'
+
 const MODEL_OPTIONS = [
   { value: 'gemini-3.6-flash', label: 'gemini-3.6-flash (Fast & Smart)' },
   { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash' },
@@ -22,7 +24,8 @@ export function ProposalReviewSection({ competitionId }: { competitionId: string
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [selectedReview, setSelectedReview] = useState<ProposalReview | null>(null)
   const [showHistory, setShowHistory] = useState(false)
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.6-flash')
+  const [selectedModel, setSelectedModel] = usePreferredModel('gemini-3.6-flash')
+
   const [modelStatuses, setModelStatuses] = useState<Record<string, { status: string; message: string }>>({})
 
   useEffect(() => {

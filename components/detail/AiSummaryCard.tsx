@@ -325,17 +325,15 @@ function FormattedJudgingCriteria({ items }: { items: string[] }) {
 
 
 
+import { usePreferredModel } from '@/hooks/usePreferredModel'
+
 export function AiSummaryCard({ summary, isLoading, isGenerating, onRegenerate }: AiSummaryCardProps) {
   const [copied, setCopied] = useState(false)
   const [isExpanded, setIsExpanded] = useState(true)
   const [showLogs, setShowLogs] = useState(false)
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('ai-summary-model') || 'gemini-3.6-flash'
-    }
-    return 'gemini-3.6-flash'
-  })
+  const [selectedModel, setSelectedModel] = usePreferredModel('gemini-3.6-flash')
   const { data: portfolio = [] } = usePortfolio()
+
 
   const [modelStatuses, setModelStatuses] = useState<Record<string, { status: string; message: string }>>({})
 

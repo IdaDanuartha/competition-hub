@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { compressPdfBuffer } from '@/lib/pdf-compressor'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { getEffectiveApiKeys } from '@/lib/get-api-keys'
+
 
 export async function GET(req: Request) {
   try {
@@ -114,10 +116,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'messages array is required' }, { status: 400 })
     }
 
-    const rawGeminiKey = process.env.GEMINI_API_KEY
-    const geminiKey = rawGeminiKey ? rawGeminiKey.replace(/^["']|["']$/g, '') : undefined
-    const rawOpenaiKey = process.env.OPENAI_API_KEY
-    const openaiKey = rawOpenaiKey ? rawOpenaiKey.replace(/^["']|["']$/g, '') : undefined
+    const { geminiKey, openaiKey } = await getEffectiveApiKeys()
+
 
     // 1. Supabase client setup
     let supabase = await createServerClient()
