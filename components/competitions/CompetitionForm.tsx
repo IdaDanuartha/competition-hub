@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
@@ -44,6 +44,41 @@ export function CompetitionForm({
   const [tags, setTags] = useState<string[]>(defaultValues?.tags ?? [])
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [internalIsSubmitting, setInternalIsSubmitting] = useState(false)
+
+  // Sync values state whenever defaultValues change from parent (e.g. after AI summary extraction)
+  useEffect(() => {
+    if (defaultValues) {
+      setValues({
+        name: defaultValues.name ?? '',
+        organizer: defaultValues.organizer ?? '',
+        theme: defaultValues.theme ?? '',
+        team_name: defaultValues.team_name ?? '',
+        team_members: defaultValues.team_members?.join(', ') ?? '',
+        instagram_url: defaultValues.instagram_url ?? '',
+        website_url: defaultValues.website_url ?? '',
+        registration_deadline: defaultValues.registration_deadline ?? '',
+        submission_deadline: defaultValues.submission_deadline ?? '',
+        event_start_at: defaultValues.event_start_at ?? '',
+        event_end_at: defaultValues.event_end_at ?? '',
+        location: defaultValues.location ?? '',
+        notes: defaultValues.notes ?? '',
+      })
+      if (defaultValues.tags) {
+        setTags(defaultValues.tags)
+      }
+    }
+  }, [
+    defaultValues?.name,
+    defaultValues?.organizer,
+    defaultValues?.theme,
+    defaultValues?.team_name,
+    defaultValues?.registration_deadline,
+    defaultValues?.submission_deadline,
+    defaultValues?.event_start_at,
+    defaultValues?.event_end_at,
+    defaultValues?.location,
+    defaultValues?.notes,
+  ])
 
   const isSubmitting = externalIsSubmitting || internalIsSubmitting
 
