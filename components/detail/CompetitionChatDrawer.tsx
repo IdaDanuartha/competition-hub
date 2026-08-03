@@ -356,14 +356,14 @@ export function CompetitionChatDrawer({ competitionId, competitionName }: Compet
                       <span>Kembali ke Chat</span>
                     </button>
                   ) : (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         onClick={() => setShowSessionList(true)}
-                        className="relative flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 shadow-xs hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors"
+                        className="relative flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 sm:px-2.5 text-xs font-medium text-zinc-700 shadow-xs hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors"
                         title="Daftar Riwayat Sesi Chat"
                       >
                         <History className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
-                        <span>Riwayat</span>
+                        <span className="hidden sm:inline">Riwayat</span>
                         {sessions.length > 0 && (
                           <span className="flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">
                             {sessions.length}
@@ -374,12 +374,13 @@ export function CompetitionChatDrawer({ competitionId, competitionName }: Compet
                       <button
                         onClick={handleNewChat}
                         title="Chat Baru"
-                        className="flex items-center gap-1 rounded-lg border border-emerald-600/30 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 transition-colors"
+                        className="flex items-center gap-1 rounded-lg border border-emerald-600/30 bg-emerald-50 px-2 py-1.5 sm:px-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 transition-colors"
                       >
                         <Plus className="h-3.5 w-3.5" />
-                        <span>New Chat</span>
+                        <span className="hidden sm:inline">New Chat</span>
                       </button>
                     </div>
+
                   )}
                 </div>
 

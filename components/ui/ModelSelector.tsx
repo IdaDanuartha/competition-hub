@@ -90,13 +90,16 @@ export function ModelSelector({
         className="flex items-center gap-2 rounded-xl border border-zinc-200/90 bg-white/90 px-3 py-1.5 text-xs font-medium text-zinc-800 shadow-xs hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/90 dark:text-zinc-200 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/90 transition-all cursor-pointer disabled:opacity-50"
       >
         <Cpu className="h-3.5 w-3.5 text-sky-500 shrink-0" />
-        <span className="truncate max-w-[130px] sm:max-w-[160px] font-medium">
+        <span className="truncate max-w-[85px] sm:max-w-[160px] font-medium">
           {selectedOpt?.value || selectedModel}
         </span>
 
-        {renderStatusBadge(currentSt)}
+        <span className="hidden sm:inline-flex">
+          {renderStatusBadge(currentSt)}
+        </span>
 
         <ChevronDown className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+
       </button>
 
       {/* Custom Popover Dropdown Menu */}
