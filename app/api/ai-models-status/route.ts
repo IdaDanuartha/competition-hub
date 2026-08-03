@@ -67,8 +67,8 @@ export async function GET() {
 
   // ── Gemini models ────────────────────────────────────────────────
   const modelsToCheck = [
+    { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
     { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-    { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
   ]
 
   for (const m of modelsToCheck) {
@@ -81,41 +81,43 @@ export async function GET() {
     results[m.id] = {
       status,
       label: m.label,
-      message: status === 'active' ? 'Aktif & Siap Digunakan' : status === 'rate_limited' ? 'Limit Kuota (429)' : 'Error',
+      message: status === 'active' ? 'Aktif & Siap Digunakan' : status === 'rate_limited' ? 'Limit Kuota (429)' : 'Error / Limit',
       credit,
     }
   }
 
-  // ── OpenAI GPT-4o Mini ───────────────────────────────────────────
-  if (!openaiKey) {
-    results['gpt-4o-mini'] = { status: 'key_missing', label: 'GPT-4o Mini (OpenAI)', message: 'OPENAI_API_KEY belum dikonfigurasi', credit: null }
-  } else {
-    // Fetch credit and model check in parallel
-    const [creditStr, chatRes] = await Promise.allSettled([
-      fetchOpenAICredit(openaiKey),
-      fetch('https://api.openai.com/v1/chat/completions', {
+  // ── OpenAI models (gpt-4o-mini & gpt-4o) ──────────────────────────
+  const openaiModelsToCheck = [
+    { id: 'gpt-4o-mini', label: 'GPT-4o Mini (OpenAI)' },
+    { id: 'gpt-4o', label: 'GPT-4o Flagship (OpenAI)' },
+  ]
+
+  for (const om of openaiModelsToCheck) {
+    if (!openaiKey) {
+      results[om.id] = { status: 'key_missing', label: om.label, message: 'OPENAI_API_KEY belum dikonfigurasi', credit: null }
+      continue
+    }
+
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
-        body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'Hi' }], max_tokens: 5 }),
+        body: JSON.stringify({ model: om.id, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 5 }),
         signal: AbortSignal.timeout(5000),
-      }),
-    ])
+      })
 
-    const credit = creditStr.status === 'fulfilled' ? creditStr.value : null
-    const res = chatRes.status === 'fulfilled' ? chatRes.value : null
-
-    if (!res) {
-      results['gpt-4o-mini'] = { status: 'active', label: 'GPT-4o Mini (OpenAI)', message: 'Aktif', credit }
-    } else if (res.ok) {
-      results['gpt-4o-mini'] = { status: 'active', label: 'GPT-4o Mini (OpenAI)', message: 'Aktif & Siap Digunakan', credit }
-    } else if (res.status === 429) {
-      results['gpt-4o-mini'] = { status: 'rate_limited', label: 'GPT-4o Mini (OpenAI)', message: 'Limit Kuota OpenAI (429)', credit }
-    } else if (res.status === 402 || res.status === 403) {
-      results['gpt-4o-mini'] = { status: 'error', label: 'GPT-4o Mini (OpenAI)', message: 'Kredit habis / akses ditolak', credit: credit ?? '$0.00 tersisa' }
-    } else {
-      results['gpt-4o-mini'] = { status: 'active', label: 'GPT-4o Mini (OpenAI)', message: 'Aktif', credit }
+      if (res.ok) {
+        results[om.id] = { status: 'active', label: om.label, message: 'Aktif & Siap Digunakan', credit: null }
+      } else if (res.status === 429) {
+        results[om.id] = { status: 'rate_limited', label: om.label, message: 'Limit Kuota OpenAI (429)', credit: null }
+      } else {
+        results[om.id] = { status: 'error', label: om.label, message: `HTTP ${res.status}`, credit: null }
+      }
+    } catch {
+      results[om.id] = { status: 'active', label: om.label, message: 'Aktif', credit: null }
     }
   }
+
 
   return NextResponse.json({
     timestamp: new Date().toISOString(),

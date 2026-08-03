@@ -23,8 +23,10 @@ interface AiSummaryCardProps {
 const MODEL_OPTIONS = [
   { value: 'gemini-3.6-flash', label: 'gemini-3.6-flash (Fast & Smart)' },
   { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash' },
-  { value: 'gpt-4o-mini', label: 'gpt-4o-mini (OpenAI)' },
+  { value: 'gpt-4o-mini', label: 'gpt-4o-mini (OpenAI Fast)' },
+  { value: 'gpt-4o', label: 'gpt-4o (OpenAI Flagship High-Reasoning)' },
 ]
+
 
 function parseThemeString(text: string) {
   if (!text || !text.trim()) return { mainTheme: '', subTheme: '', points: [], subThemePoints: [], raw: text }

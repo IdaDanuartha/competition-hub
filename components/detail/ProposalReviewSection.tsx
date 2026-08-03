@@ -12,7 +12,8 @@ import type { ProposalReview } from '@/lib/types/database'
 const MODEL_OPTIONS = [
   { value: 'gemini-3.6-flash', label: 'gemini-3.6-flash (Fast & Smart)' },
   { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash' },
-  { value: 'gpt-4o-mini', label: 'gpt-4o-mini (OpenAI)' },
+  { value: 'gpt-4o-mini', label: 'gpt-4o-mini (OpenAI Fast)' },
+  { value: 'gpt-4o', label: 'gpt-4o (OpenAI Flagship)' },
 ]
 
 export function ProposalReviewSection({ competitionId }: { competitionId: string }) {
@@ -22,6 +23,18 @@ export function ProposalReviewSection({ competitionId }: { competitionId: string
   const [selectedReview, setSelectedReview] = useState<ProposalReview | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>('gemini-3.6-flash')
+  const [modelStatuses, setModelStatuses] = useState<Record<string, { status: string; message: string }>>({})
+
+  useEffect(() => {
+    fetch('/api/ai-models-status')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.models) {
+          setModelStatuses(data.models)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   // The active review is either user-selected from history or the latest review
   const activeReview = selectedReview || reviews[0] || null
@@ -74,9 +87,11 @@ export function ProposalReviewSection({ competitionId }: { competitionId: string
           <ModelSelector
             options={MODEL_OPTIONS}
             selectedModel={selectedModel}
+            modelStatuses={modelStatuses as any}
             onSelectModel={setSelectedModel}
             disabled={isPending}
           />
+
           {reviews.length > 0 && (
             <Button
               variant="ghost"

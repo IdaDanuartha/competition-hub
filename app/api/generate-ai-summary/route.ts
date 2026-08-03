@@ -276,10 +276,10 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
     }
 
     // Try OpenAI if requested
-    if (preferred_model === 'gpt-4o-mini' && openaiKey) {
+    if ((preferred_model === 'gpt-4o-mini' || preferred_model === 'gpt-4o') && openaiKey) {
       try {
         const modelReqStart = Date.now()
-        addLog(`[5/6] Mengirimkan payload ke OpenAI GPT-4o Mini...`)
+        addLog(`[5/6] Mengirimkan payload ke OpenAI (${preferred_model})...`)
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -287,14 +287,14 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
             Authorization: `Bearer ${openaiKey}`,
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: preferred_model,
             messages: [
               { role: 'system', content: systemPromptText },
               { role: 'user', content: userPromptText },
             ],
             response_format: { type: 'json_object' },
           }),
-          signal: AbortSignal.timeout(25000),
+          signal: AbortSignal.timeout(30000),
         })
 
         const reqDuration = ((Date.now() - modelReqStart) / 1000).toFixed(2)
@@ -304,16 +304,17 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
           const rawText = data.choices?.[0]?.message?.content
           if (rawText) {
             parsedResult = JSON.parse(rawText)
-            modelUsed = 'gpt-4o-mini'
-            addLog(`✓ GPT-4o Mini selesai memproses analisis (${reqDuration} detik)`)
+            modelUsed = preferred_model
+            addLog(`✓ ${preferred_model} selesai memproses analisis (${reqDuration} detik)`)
           }
         } else {
-          addLog(`⚠️ OpenAI GPT-4o Mini mengembalikan HTTP status ${res.status}`)
+          addLog(`⚠️ OpenAI ${preferred_model} mengembalikan HTTP status ${res.status}`)
         }
       } catch (e: any) {
-        addLog(`⚠️ OpenAI GPT-4o Mini error/timeout: ${e?.message || 'Error'}, beralih ke Gemini...`)
+        addLog(`⚠️ OpenAI ${preferred_model} error/timeout: ${e?.message || 'Error'}, beralih ke Gemini...`)
       }
     }
+
 
     // Try Gemini models
     if (!parsedResult && geminiKey) {

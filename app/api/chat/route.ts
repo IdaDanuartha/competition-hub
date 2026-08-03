@@ -369,7 +369,7 @@ ATURAN PENTING:
     }
 
     // Try OpenAI GPT if preferred
-    if (preferred_model === 'gpt-4o-mini' && openaiKey) {
+    if ((preferred_model === 'gpt-4o-mini' || preferred_model === 'gpt-4o') && openaiKey) {
       try {
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
@@ -378,21 +378,22 @@ ATURAN PENTING:
             Authorization: `Bearer ${openaiKey}`,
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: preferred_model,
             messages: openAiMessages,
           }),
-          signal: AbortSignal.timeout(18000),
+          signal: AbortSignal.timeout(20000),
         })
 
         if (res.ok) {
           const data = await res.json()
           replyText = data.choices?.[0]?.message?.content || ''
-          modelUsed = 'gpt-4o-mini'
+          modelUsed = preferred_model
         }
       } catch (_e) {
         console.warn('[Chat API] OpenAI preferred model failed, falling back to Gemini...')
       }
     }
+
 
     // Try Gemini models
     if (!replyText && geminiKey) {
