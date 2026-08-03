@@ -343,70 +343,77 @@ export function CompetitionChatDrawer({ competitionId, competitionName }: Compet
         <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="relative flex h-full w-full max-w-lg flex-col bg-white shadow-2xl dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-right duration-300 overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-zinc-200 bg-zinc-50/80 px-3.5 py-3 dark:border-zinc-800 dark:bg-zinc-900/80 shrink-0">
-              <div className="flex items-center gap-2 min-w-0">
-                {showSessionList ? (
-                  <button
-                    onClick={() => setShowSessionList(false)}
-                    className="rounded-lg p-1.5 text-zinc-600 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:bg-zinc-800 transition-colors"
-                    title="Kembali ke Chat"
-                  >
-                    <ChevronLeft className="h-5 w-5" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setShowSessionList(true)}
-                    className="relative rounded-lg p-1.5 text-zinc-600 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1"
-                    title="Riwayat Percakapan"
-                  >
-                    <History className="h-4 w-4" />
-                    {sessions.length > 0 && (
-                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">
-                        {sessions.length}
-                      </span>
-                    )}
-                  </button>
-                )}
+            <div className="border-b border-zinc-200 bg-zinc-50/90 dark:border-zinc-800 dark:bg-zinc-900/90 shrink-0">
+              {/* Row 1: Action Controls & Model Selector */}
+              <div className="flex items-center justify-between px-3.5 py-2.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {showSessionList ? (
+                    <button
+                      onClick={() => setShowSessionList(false)}
+                      className="flex items-center gap-1 rounded-lg bg-zinc-200/80 px-2.5 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span>Kembali ke Chat</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setShowSessionList(true)}
+                        className="relative flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 shadow-xs hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors"
+                        title="Daftar Riwayat Sesi Chat"
+                      >
+                        <History className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
+                        <span>Riwayat</span>
+                        {sessions.length > 0 && (
+                          <span className="flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">
+                            {sessions.length}
+                          </span>
+                        )}
+                      </button>
 
-                <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 truncate">
-                    {showSessionList ? 'Riwayat Chat' : 'Asisten AI Guidebook'}
-                  </h3>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
-                    {competitionName}
-                  </p>
+                      <button
+                        onClick={handleNewChat}
+                        title="Chat Baru"
+                        className="flex items-center gap-1 rounded-lg border border-emerald-600/30 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 transition-colors"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>New Chat</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <ModelSelector
+                    options={CHAT_MODEL_OPTIONS}
+                    selectedModel={preferredModel}
+                    modelStatuses={modelStatuses as any}
+                    onSelectModel={handleModelChange}
+                  />
+
+                  <button
+                    onClick={() => setIsOpen(false)}
+                    className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 shrink-0">
-                {/* New Chat Button */}
-                {!showSessionList && (
-                  <button
-                    onClick={handleNewChat}
-                    title="Chat Baru"
-                    className="flex items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 transition-colors"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">New Chat</span>
-                  </button>
-                )}
-
-                {/* Model Selector */}
-                <ModelSelector
-                  options={CHAT_MODEL_OPTIONS}
-                  selectedModel={preferredModel}
-                  modelStatuses={modelStatuses as any}
-                  onSelectModel={handleModelChange}
-                />
-
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+              {/* Row 2: Competition Title Sub-bar */}
+              <div className="flex items-center justify-between border-t border-zinc-200/70 bg-white px-3.5 py-1.5 dark:border-zinc-800/70 dark:bg-zinc-950 text-[11px] text-zinc-500 dark:text-zinc-400">
+                <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                  <Bot className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200 truncate">
+                    {competitionName}
+                  </span>
+                </div>
+                <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 shrink-0 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200/50 dark:border-emerald-800/50">
+                  AI Guidebook Assistant
+                </span>
               </div>
             </div>
+
 
             {/* View: Sessions History List */}
             {showSessionList ? (
