@@ -12,7 +12,7 @@ import { useUpdateCompetitionStatus } from '@/hooks/useCompetitions'
 import type { Competition, CompetitionStatus } from '@/lib/types/database'
 import type { NextRundownEntry } from '@/hooks/useNextRundownDates'
 
-const FINISHED_STATUSES = new Set<CompetitionStatus>(['completed', 'not_selected'])
+const FINISHED_STATUSES = new Set<CompetitionStatus>(['completed', 'not_selected', 'cancelled'])
 
 export function CompetitionCard({
   competition,

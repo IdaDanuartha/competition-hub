@@ -1,6 +1,6 @@
 export type CompetitionStatus =
   | 'researching' | 'registered' | 'in_progress' | 'submitted'
-  | 'finalist' | 'completed' | 'not_selected'
+  | 'finalist' | 'completed' | 'not_selected' | 'cancelled'
 
 export type DocumentType = 'guidebook' | 'addendum' | 'template' | 'other'
 export type NotificationStatus = 'sent' | 'failed'

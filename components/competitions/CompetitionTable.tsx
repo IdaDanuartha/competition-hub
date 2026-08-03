@@ -12,7 +12,7 @@ import { cn } from '@/lib/cn'
 
 type SortKey = 'name' | 'nearestDeadline' | 'status'
 
-const FINISHED_STATUSES = new Set<CompetitionStatus>(['completed', 'not_selected'])
+const FINISHED_STATUSES = new Set<CompetitionStatus>(['completed', 'not_selected', 'cancelled'])
 
 function sortCompetitions(
   competitions: Competition[],

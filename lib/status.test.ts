@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { STATUS_ORDER, statusLabel, statusColorClass, statusProgress } from './status'
 
 describe('STATUS_ORDER', () => {
-  it('has 7 statuses ending in not_selected', () => {
-    expect(STATUS_ORDER).toHaveLength(7)
-    expect(STATUS_ORDER[STATUS_ORDER.length - 1]).toBe('not_selected')
+  it('has 8 statuses ending in cancelled', () => {
+    expect(STATUS_ORDER).toHaveLength(8)
+    expect(STATUS_ORDER[STATUS_ORDER.length - 1]).toBe('cancelled')
   })
 })
 
