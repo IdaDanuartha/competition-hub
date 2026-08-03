@@ -1,7 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowUpDown, ChevronDown, Calendar, Tag as TagIcon } from 'lucide-react'
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, Calendar, Tag as TagIcon } from 'lucide-react'
 import { formatDate } from '@/lib/date-format'
 import { formatTag } from '@/lib/tags'
 import { STATUS_ORDER, statusLabel, statusColorClass } from '@/lib/status'
@@ -11,17 +12,25 @@ import type { Competition, CompetitionStatus } from '@/lib/types/database'
 import { cn } from '@/lib/cn'
 
 type SortKey = 'name' | 'nearestDeadline' | 'status'
+type SortOrder = 'asc' | 'desc'
 
 const FINISHED_STATUSES = new Set<CompetitionStatus>(['completed', 'not_selected', 'cancelled'])
 
 function sortCompetitions(
   competitions: Competition[],
   sortKey: SortKey,
+  sortOrder: SortOrder,
   nextRundownMap: Map<string, { event_at: string }>
 ): Competition[] {
   const copy = [...competitions]
-  if (sortKey === 'name') return copy.sort((a, b) => a.name.localeCompare(b.name))
-  if (sortKey === 'status') return copy.sort((a, b) => a.status.localeCompare(b.status))
+  const dir = sortOrder === 'asc' ? 1 : -1
+
+  if (sortKey === 'name') {
+    return copy.sort((a, b) => dir * a.name.localeCompare(b.name))
+  }
+  if (sortKey === 'status') {
+    return copy.sort((a, b) => dir * a.status.localeCompare(b.status))
+  }
 
   // Sort by nearest upcoming date — prefer rundown event, fall back to deadline fields
   return copy.sort((a, b) => {
@@ -32,7 +41,10 @@ function sortCompetitions(
       if (dates.length === 0) return Infinity
       return Math.min(...dates.map((d) => new Date(d).getTime()))
     }
-    return getMs(a) - getMs(b)
+    const valA = getMs(a)
+    const valB = getMs(b)
+    if (valA === valB) return 0
+    return dir * (valA - valB)
   })
 }
 
@@ -42,10 +54,34 @@ interface CompetitionTableProps {
   onSortKeyChange: (key: SortKey) => void
 }
 
-export function CompetitionTable({ competitions, sortKey, onSortKeyChange }: CompetitionTableProps) {
+export function CompetitionTable({ competitions, sortKey: initialSortKey, onSortKeyChange }: CompetitionTableProps) {
   const { mutate: updateStatus } = useUpdateCompetitionStatus()
+  const [currentSortKey, setCurrentSortKey] = useState<SortKey>(initialSortKey)
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
+
   const ids = competitions.map((c) => c.id)
   const { data: nextRundownMap = new Map() } = useNextRundownDates(ids)
+
+  function handleHeaderClick(key: SortKey) {
+    if (currentSortKey === key) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setCurrentSortKey(key)
+      setSortOrder('asc')
+      onSortKeyChange(key)
+    }
+  }
+
+  function renderSortIcon(key: SortKey) {
+    if (currentSortKey !== key) {
+      return <ArrowUpDown className="h-3 w-3 opacity-40 shrink-0" />
+    }
+    return sortOrder === 'asc' ? (
+      <ArrowUp className="h-3 w-3 text-sky-600 dark:text-sky-400 font-bold shrink-0" />
+    ) : (
+      <ArrowDown className="h-3 w-3 text-sky-600 dark:text-sky-400 font-bold shrink-0" />
+    )
+  }
 
   if (competitions.length === 0) {
     return (
@@ -57,7 +93,7 @@ export function CompetitionTable({ competitions, sortKey, onSortKeyChange }: Com
     )
   }
 
-  const sorted = sortCompetitions(competitions, sortKey, nextRundownMap)
+  const sorted = sortCompetitions(competitions, currentSortKey, sortOrder, nextRundownMap)
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white shadow-xs overflow-hidden dark:border-zinc-800 dark:bg-zinc-950">
@@ -66,21 +102,23 @@ export function CompetitionTable({ competitions, sortKey, onSortKeyChange }: Com
           <thead>
             <tr className="border-b border-zinc-200/80 bg-zinc-50/50 text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-400">
               <th
-                className="cursor-pointer py-3.5 px-5 transition-colors hover:text-zinc-900 dark:hover:text-zinc-200"
-                onClick={() => onSortKeyChange('name')}
+                className="cursor-pointer py-3.5 px-5 transition-colors hover:text-zinc-900 dark:hover:text-zinc-200 select-none"
+                onClick={() => handleHeaderClick('name')}
+                title="Klik untuk urutkan Nama (A-Z / Z-A)"
               >
                 <div className="flex items-center gap-1.5">
-                  <span>Name</span>
-                  <ArrowUpDown className="h-3 w-3 opacity-60" />
+                  <span className={currentSortKey === 'name' ? 'text-sky-600 dark:text-sky-400 font-bold' : ''}>Name</span>
+                  {renderSortIcon('name')}
                 </div>
               </th>
               <th
-                className="cursor-pointer py-3.5 px-4 transition-colors hover:text-zinc-900 dark:hover:text-zinc-200"
-                onClick={() => onSortKeyChange('status')}
+                className="cursor-pointer py-3.5 px-4 transition-colors hover:text-zinc-900 dark:hover:text-zinc-200 select-none"
+                onClick={() => handleHeaderClick('status')}
+                title="Klik untuk urutkan Status"
               >
                 <div className="flex items-center gap-1.5">
-                  <span>Status</span>
-                  <ArrowUpDown className="h-3 w-3 opacity-60" />
+                  <span className={currentSortKey === 'status' ? 'text-sky-600 dark:text-sky-400 font-bold' : ''}>Status</span>
+                  {renderSortIcon('status')}
                 </div>
               </th>
               <th className="py-3.5 px-4">
@@ -90,13 +128,14 @@ export function CompetitionTable({ competitions, sortKey, onSortKeyChange }: Com
                 </div>
               </th>
               <th
-                className="cursor-pointer py-3.5 px-5 transition-colors hover:text-zinc-900 dark:hover:text-zinc-200"
-                onClick={() => onSortKeyChange('nearestDeadline')}
+                className="cursor-pointer py-3.5 px-5 transition-colors hover:text-zinc-900 dark:hover:text-zinc-200 select-none"
+                onClick={() => handleHeaderClick('nearestDeadline')}
+                title="Klik untuk urutkan Tanggal (Terdekat / Terjauh)"
               >
                 <div className="flex items-center gap-1.5">
                   <Calendar className="h-3 w-3 opacity-60" />
-                  <span>Next Date</span>
-                  <ArrowUpDown className="h-3 w-3 opacity-60" />
+                  <span className={currentSortKey === 'nearestDeadline' ? 'text-sky-600 dark:text-sky-400 font-bold' : ''}>Next Date</span>
+                  {renderSortIcon('nearestDeadline')}
                 </div>
               </th>
             </tr>
