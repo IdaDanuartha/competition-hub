@@ -16,29 +16,29 @@ const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MAX_DOTS_PER_DAY = 3
 
 function isSameDay(a: Date, b: Date): boolean {
-  return a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate()
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
 
 function buildGridDays(month: Date): Date[] {
-  const year = month.getUTCFullYear()
-  const monthIndex = month.getUTCMonth()
-  const firstOfMonth = new Date(Date.UTC(year, monthIndex, 1))
-  const startWeekday = firstOfMonth.getUTCDay()
-  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
+  const year = month.getFullYear()
+  const monthIndex = month.getMonth()
+  const firstOfMonth = new Date(year, monthIndex, 1)
+  const startWeekday = firstOfMonth.getDay()
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
 
   const days: Date[] = []
   // Leading spillover from previous month.
   for (let i = startWeekday; i > 0; i--) {
-    days.push(new Date(Date.UTC(year, monthIndex, 1 - i)))
+    days.push(new Date(year, monthIndex, 1 - i))
   }
   // Days of the current month.
   for (let d = 1; d <= daysInMonth; d++) {
-    days.push(new Date(Date.UTC(year, monthIndex, d)))
+    days.push(new Date(year, monthIndex, d))
   }
   // Trailing spillover to complete the last week.
   while (days.length % 7 !== 0) {
     const last = days[days.length - 1]
-    days.push(new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate() + 1)))
+    days.push(new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1))
   }
   return days
 }
@@ -59,7 +59,7 @@ export function CalendarGrid({ month, events, selectedDay, onSelectDay }: Calend
       <div className="grid grid-cols-7 gap-1">
         {days.map((day) => {
           const dayEvents = events.filter((event) => isSameDay(new Date(event.event_at), day))
-          const isCurrentMonth = day.getUTCMonth() === month.getUTCMonth()
+          const isCurrentMonth = day.getMonth() === month.getMonth()
           const isToday = isSameDay(day, today)
           const isSelected = selectedDay !== null && isSameDay(day, selectedDay)
           const visibleDots = dayEvents.slice(0, MAX_DOTS_PER_DAY)
@@ -80,7 +80,7 @@ export function CalendarGrid({ month, events, selectedDay, onSelectDay }: Calend
                 isToday && !isSelected && 'ring-1 ring-sky-400 dark:ring-sky-600'
               )}
             >
-              <span className="text-[11px] font-semibold">{day.getUTCDate()}</span>
+              <span className="text-[11px] font-semibold">{day.getDate()}</span>
               <div className="flex flex-wrap gap-0.5">
                 {visibleDots.map((event) => {
                   const colors = getCategoryColorClasses(getCalendarCategory(event.auto_source))

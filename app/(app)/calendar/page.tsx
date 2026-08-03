@@ -10,21 +10,21 @@ import { ALL_CALENDAR_CATEGORIES, getCategoryColorClasses, getCategoryLabel } fr
 import { Button } from '@/components/ui/Button'
 
 function startOfMonth(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1))
+  return new Date(date.getFullYear(), date.getMonth(), 1)
 }
 
 function addMonths(date: Date, delta: number): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + delta, 1))
+  return new Date(date.getFullYear(), date.getMonth() + delta, 1)
 }
 
 function gridRange(month: Date): { start: Date; end: Date } {
   const firstOfMonth = startOfMonth(month)
-  const startWeekday = firstOfMonth.getUTCDay()
-  const start = new Date(Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth(), 1 - startWeekday))
-  const daysInMonth = new Date(Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth() + 1, 0)).getUTCDate()
-  const lastOfMonth = new Date(Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth(), daysInMonth))
-  const trailingDays = (7 - ((lastOfMonth.getUTCDay() + 1) % 7)) % 7
-  const end = new Date(Date.UTC(lastOfMonth.getUTCFullYear(), lastOfMonth.getUTCMonth(), lastOfMonth.getUTCDate() + trailingDays, 23, 59, 59))
+  const startWeekday = firstOfMonth.getDay()
+  const start = new Date(firstOfMonth.getFullYear(), firstOfMonth.getMonth(), 1 - startWeekday)
+  const daysInMonth = new Date(firstOfMonth.getFullYear(), firstOfMonth.getMonth() + 1, 0).getDate()
+  const lastOfMonth = new Date(firstOfMonth.getFullYear(), firstOfMonth.getMonth(), daysInMonth)
+  const trailingDays = (7 - ((lastOfMonth.getDay() + 1) % 7)) % 7
+  const end = new Date(lastOfMonth.getFullYear(), lastOfMonth.getMonth(), lastOfMonth.getDate() + trailingDays, 23, 59, 59)
   return { start, end }
 }
 
@@ -33,16 +33,16 @@ export default function CalendarPage() {
   const [selectedDay, setSelectedDay] = useState<Date | null>(() => new Date())
 
   const { start, end } = useMemo(() => gridRange(currentMonth), [currentMonth])
-  const { data: events, isLoading, error } = useCalendarRundownItems(start, end)
+  const { data: events, isLoading, error, refetch } = useCalendarRundownItems(start, end)
 
   const dayEvents = useMemo(() => {
     if (!events || !selectedDay) return []
     return events.filter((event) => {
       const eventDate = new Date(event.event_at)
       return (
-        eventDate.getUTCFullYear() === selectedDay.getUTCFullYear() &&
-        eventDate.getUTCMonth() === selectedDay.getUTCMonth() &&
-        eventDate.getUTCDate() === selectedDay.getUTCDate()
+        eventDate.getFullYear() === selectedDay.getFullYear() &&
+        eventDate.getMonth() === selectedDay.getMonth() &&
+        eventDate.getDate() === selectedDay.getDate()
       )
     })
   }, [events, selectedDay])
@@ -56,7 +56,7 @@ export default function CalendarPage() {
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="w-32 text-center text-sm font-semibold text-zinc-700 dark:text-zinc-200">
-            {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}
+            {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </span>
           <Button variant="secondary" size="sm" onClick={() => setCurrentMonth((m) => addMonths(m, 1))} aria-label="Next month">
             <ChevronRight className="h-4 w-4" />
@@ -95,8 +95,11 @@ export default function CalendarPage() {
       )}
 
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">
           Failed to load calendar events.
+          <Button variant="secondary" size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
         </div>
       )}
 

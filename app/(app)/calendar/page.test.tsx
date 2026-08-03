@@ -5,13 +5,16 @@ import CalendarPage from './page'
 import type { CalendarRundownItem } from '@/hooks/useCalendarRundownItems'
 
 // Pick a fixed day-of-month that is deterministically NOT today, in the same
-// UTC month/year as `currentMonth`'s default (the current month), so the
+// local month/year as `currentMonth`'s default (the current month), so the
 // event lands on a current-month grid cell other than the one selected by
 // default (today). Falls back to the 6th on the rare day today is the 5th,
-// to avoid flaking near month boundaries.
+// to avoid flaking near month boundaries. Local-time constructors are used
+// throughout (rather than UTC) because the page now buckets days by local
+// time, so the fixture must match that semantic to stay deterministic
+// regardless of the machine timezone running the tests.
 const today = new Date()
-const mockEventDay = today.getUTCDate() === 5 ? 6 : 5
-const mockEventDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), mockEventDay, 12, 0, 0))
+const mockEventDay = today.getDate() === 5 ? 6 : 5
+const mockEventDate = new Date(today.getFullYear(), today.getMonth(), mockEventDay, 12, 0, 0)
 
 const mockEvent: CalendarRundownItem = {
   id: '1',

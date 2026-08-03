@@ -16,11 +16,17 @@ function makeEvent(id: string, isoDate: string, autoSource: string | null): Cale
 }
 
 describe('CalendarGrid', () => {
-  const month = new Date('2026-08-01T00:00:00Z')
+  // Built with local-time constructors (not UTC ISO literals) so the grid's
+  // local-time day-bucketing is exercised consistently regardless of the
+  // machine timezone running the tests: the same local wall-clock semantics
+  // are used both to construct these fixtures and to bucket them in the
+  // component, so the test is timezone-independent by construction rather
+  // than by pinning a specific offset.
+  const month = new Date(2026, 7, 1)
   const events = [
-    makeEvent('1', '2026-08-10T15:00:00Z', 'submission_deadline'),
-    makeEvent('2', '2026-08-10T09:00:00Z', 'registration_deadline'),
-    makeEvent('3', '2026-08-20T09:00:00Z', null),
+    makeEvent('1', new Date(2026, 7, 10, 15, 0, 0).toISOString(), 'submission_deadline'),
+    makeEvent('2', new Date(2026, 7, 10, 9, 0, 0).toISOString(), 'registration_deadline'),
+    makeEvent('3', new Date(2026, 7, 20, 9, 0, 0).toISOString(), null),
   ]
 
   it('renders a day cell for every day in the month', () => {
@@ -54,6 +60,6 @@ describe('CalendarGrid', () => {
     fireEvent.click(screen.getByText('20').closest('button') as HTMLElement)
     expect(onSelectDay).toHaveBeenCalledTimes(1)
     const calledWith: Date = onSelectDay.mock.calls[0][0]
-    expect(calledWith.getUTCDate()).toBe(20)
+    expect(calledWith.getDate()).toBe(20)
   })
 })
