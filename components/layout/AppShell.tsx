@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Settings, Sparkles } from 'lucide-react'
+import { LayoutDashboard, Settings, Sparkles, CalendarDays } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { ThemeToggle } from '@/components/settings/ThemeToggle'
 import { OfflineBanner } from './OfflineBanner'
@@ -26,6 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const isDashboardActive = pathname === '/dashboard' || pathname.startsWith('/competitions')
+  const isCalendarActive = pathname === '/calendar'
   const isSettingsActive = pathname === '/settings'
   const isCompetitionDetailPage = pathname.startsWith('/competitions/')
 
@@ -50,6 +51,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <LayoutDashboard className="h-4 w-4" />
             Dashboard
+          </Link>
+          <Link
+            href="/calendar"
+            className={cn(
+              'flex items-center gap-1.5 text-sm transition-colors hover:text-zinc-900 dark:hover:text-zinc-50',
+              isCalendarActive ? 'font-semibold text-sky-600 dark:text-sky-400' : 'text-zinc-600 dark:text-zinc-400'
+            )}
+          >
+            <CalendarDays className="h-4 w-4" />
+            Calendar
           </Link>
           <button
             type="button"
