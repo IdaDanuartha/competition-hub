@@ -27,7 +27,15 @@ export function useCreateRundownItem(competitionId: string) {
   return useMutation({
     mutationFn: async (values: RundownItemFormValues) => {
       const supabase = createClient()
-      const { error } = await supabase.from('rundown_items').insert({ ...values, competition_id: competitionId })
+      // Convert datetime-local value (e.g. "2026-08-08T23:59") to a proper UTC ISO string.
+      // new Date() treats a datetime-local string as LOCAL time and toISOString() converts it to UTC,
+      // preventing the +8h timezone shift when Supabase/PostgreSQL stores it as UTC.
+      const eventAtIso = values.event_at
+        ? new Date(values.event_at).toISOString()
+        : values.event_at
+      const { error } = await supabase
+        .from('rundown_items')
+        .insert({ ...values, event_at: eventAtIso, competition_id: competitionId })
       if (error) throw error
     },
     onSuccess: () => {
