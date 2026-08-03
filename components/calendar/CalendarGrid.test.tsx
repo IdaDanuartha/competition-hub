@@ -25,8 +25,19 @@ describe('CalendarGrid', () => {
 
   it('renders a day cell for every day in the month', () => {
     render(<CalendarGrid month={month} events={events} selectedDay={null} onSelectDay={vi.fn()} />)
-    expect(screen.getByText('1')).toBeInTheDocument()
-    expect(screen.getByText('31')).toBeInTheDocument()
+
+    // August 2026 spillover means adjacent-month cells also show "1" (Sep 1)
+    // and "31" (Jul 31), so scope the query to the in-month cell via the
+    // `data-current-month` attribute on the day's button.
+    const inMonthDay1 = screen
+      .getAllByText('1')
+      .find((el) => el.closest('button')?.getAttribute('data-current-month') === 'true')
+    const inMonthDay31 = screen
+      .getAllByText('31')
+      .find((el) => el.closest('button')?.getAttribute('data-current-month') === 'true')
+
+    expect(inMonthDay1).toBeInTheDocument()
+    expect(inMonthDay31).toBeInTheDocument()
   })
 
   it('renders one dot per event on a day with events', () => {

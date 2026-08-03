@@ -69,6 +69,7 @@ export function CalendarGrid({ month, events, selectedDay, onSelectDay }: Calend
             <button
               key={day.toISOString()}
               type="button"
+              data-current-month={isCurrentMonth}
               onClick={() => onSelectDay(day)}
               className={cn(
                 'flex min-h-16 flex-col items-start gap-1 rounded-lg p-1.5 text-left transition-colors',
@@ -79,7 +80,7 @@ export function CalendarGrid({ month, events, selectedDay, onSelectDay }: Calend
                 isToday && !isSelected && 'ring-1 ring-sky-400 dark:ring-sky-600'
               )}
             >
-              <span className="text-[11px] font-semibold">{isCurrentMonth ? day.getUTCDate() : ''}</span>
+              <span className="text-[11px] font-semibold">{day.getUTCDate()}</span>
               <div className="flex flex-wrap gap-0.5">
                 {visibleDots.map((event) => {
                   const colors = getCategoryColorClasses(getCalendarCategory(event.auto_source))
