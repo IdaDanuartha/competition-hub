@@ -44,6 +44,47 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'keywords required' }, { status: 400 })
     }
 
+    const currentDateObj = new Date()
+    const currentYear = currentDateObj.getFullYear()
+    const todayIso = currentDateObj.toISOString().split('T')[0] // e.g. "2026-08-04"
+
+    const systemPrompt = `You are a research assistant that finds real, currently OPEN or UPCOMING competitions, hackathons, and contests.
+
+CRITICAL DATE & YEAR CONSTRAINTS:
+- Today's date is ${todayIso} (Year ${currentYear}).
+- You MUST ONLY search for and return competitions that are CURRENTLY OPEN for registration or UPCOMING in ${currentYear} or ${currentYear + 1}.
+- ABSOLUTELY DO NOT return any competition from past years (such as 2021, 2022, 2023, 2024, or 2025) or competitions whose deadlines have ALREADY PASSED before ${todayIso}.
+- Every returned competition MUST have a registration deadline or submission deadline that is in the FUTURE (on or after ${todayIso}).
+- Never invent deadlines. If unsure of exact date, state the estimated future month in ${currentYear}.
+
+For each competition found, extract:
+- name: official competition name (MUST be currently active in ${currentYear})
+- organizer: organizing body/institution, or null if unclear
+- theme: the competition's theme or main focus, or null if unclear
+- tags: 2-5 short category tags (e.g. "hackathon", "AI", "mahasiswa", "design")
+- website_url: official website or registration page URL
+- registration_deadline: ISO 8601 date string of the FUTURE registration deadline, or null if unspecified
+- submission_deadline: ISO 8601 date string of the FUTURE submission deadline, or null if unspecified
+- summary_snippet: 1-2 sentence summary of what the competition is about
+
+Return ONLY a valid JSON object matching this schema, with no markdown fences:
+{
+  "results": [
+    {
+      "name": "string",
+      "organizer": "string or null",
+      "theme": "string or null",
+      "tags": ["string"],
+      "website_url": "string or null",
+      "registration_deadline": "ISO 8601 string or null",
+      "submission_deadline": "ISO 8601 string or null",
+      "summary_snippet": "string"
+    }
+  ]
+}
+
+If nothing relevant is currently open in ${currentYear}, return { "results": [] }.`
+
     const { geminiKeys, openaiKey } = await getEffectiveApiKeys()
 
     if (geminiKeys.length === 0 && !openaiKey) {
@@ -53,7 +94,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const userPromptText = `Find real, open, or upcoming competitions matching these keywords: "${keywords}".`
+    const userPromptText = `Find real, currently open or upcoming competitions in ${currentYear} matching these keywords: "${keywords}". Ensure all deadlines are in ${currentYear} or ${currentYear + 1} and NOT expired.`
 
     let geminiModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']
     if (preferred_model && preferred_model.startsWith('gemini')) {
@@ -77,7 +118,7 @@ export async function POST(req: Request) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+                  systemInstruction: { parts: [{ text: systemPrompt }] },
                   contents: [{ parts: [{ text: userPromptText }] }],
                   tools: [{ google_search: {} }],
                   generationConfig: { responseMimeType: 'application/json' },
@@ -96,7 +137,6 @@ export async function POST(req: Request) {
               }
             } else if (res.status === 429) {
               lastErrorMessage = `Rate limit (HTTP 429) pada key #${keyIdx + 1}. Mencoba failover...`
-              // Short delay before trying next key/model
               await new Promise((r) => setTimeout(r, 400))
             } else {
               lastErrorMessage = `Model ${modelName} mengembalikan HTTP status ${res.status}`
@@ -121,7 +161,7 @@ export async function POST(req: Request) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+                systemInstruction: { parts: [{ text: systemPrompt }] },
                 contents: [{ parts: [{ text: userPromptText }] }],
                 generationConfig: { responseMimeType: 'application/json' },
               }),
@@ -154,7 +194,7 @@ export async function POST(req: Request) {
           body: JSON.stringify({
             model: 'gpt-4o-mini',
             messages: [
-              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'system', content: systemPrompt },
               { role: 'user', content: userPromptText },
             ],
             response_format: { type: 'json_object' },
@@ -183,8 +223,28 @@ export async function POST(req: Request) {
       )
     }
 
+    // Post-fetch Filter: Strictly remove past year competitions and expired deadlines
+    const rawItems = Array.isArray(parsedResult.results) ? parsedResult.results : []
+    const activeResults = rawItems.filter((item) => {
+      // 1. Filter out if title or summary explicitly contains past years (2020-2025)
+      const textToTest = `${item.name || ''} ${item.summary_snippet || ''}`
+      if (/\b(2020|2021|2022|2023|2024|2025)\b/.test(textToTest)) {
+        return false
+      }
+
+      // 2. Filter out if deadlines are in the past
+      const regDate = item.registration_deadline ? item.registration_deadline.slice(0, 10) : null
+      const subDate = item.submission_deadline ? item.submission_deadline.slice(0, 10) : null
+
+      if (regDate && regDate < todayIso && subDate && subDate < todayIso) {
+        return false
+      }
+
+      return true
+    })
+
     return NextResponse.json({
-      results: Array.isArray(parsedResult.results) ? parsedResult.results : [],
+      results: activeResults,
       model_used: modelUsed,
     })
   } catch (err: any) {
