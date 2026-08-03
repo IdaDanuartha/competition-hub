@@ -341,7 +341,7 @@ Return ONLY a valid JSON object matching this schema:
     "theme": "Tema utama atau gambaran topik kompetisi (contoh: Digital Innovation for Sustainability)",
     "instagram_url": "URL Instagram resmi lomba jika ditemukan dalam dokumen (misal https://instagram.com/...), atau null jika tidak ada",
     "website_url": "URL website resmi lomba jika ditemukan dalam dokumen (misal https://...), atau null jika tidak ada",
-    "location": "Lokasi pelaksanaan lomba (contoh: Online, Hybrid, atau nama tempat/kota), atau null jika tidak ada",
+    "location": "WAJIB DIISI! Tulis 'Online' jika seluruh kegiatan dilakukan secara daring/online/zoom/website, tulis 'Hybrid' jika kombinasi online & offline, atau tulis nama kota/tempat (misal: 'Jakarta' / 'Universitas Indonesia') jika luring. JANGAN diisi null jika ada petunjuk.",
     "notes": "Catatan ringkas penting tambahan (kontak person, email, discord, dll), atau null"
   },
   "extracted_deadlines": {
@@ -611,8 +611,29 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
       }
     }
 
-    if (extInfo.location && typeof extInfo.location === 'string' && extInfo.location.trim()) {
-      compUpdatePayload.location = extInfo.location.trim()
+    let detectedLocation = (extInfo.location && typeof extInfo.location === 'string') ? extInfo.location.trim() : ''
+
+    // Fallback scanner for location if AI didn't provide location explicitly
+    if (!detectedLocation) {
+      const fullTextToScan = `${pdfExtractedText} ${parsedResult.summary || ''} ${JSON.stringify(parsedResult.key_requirements || [])} ${JSON.stringify(parsedResult.important_dates || [])}`.toLowerCase()
+      
+      const hasOnline = /online|daring|zoom|google meet|website|unggah|upload|submission|submit/i.test(fullTextToScan)
+      const hasOffline = /luring|onsite|tatap muka|aula|gedung|kampus|universitas|jakrta|depok|bandung|yogyakarta|surabaya/i.test(fullTextToScan)
+      const hasHybrid = /hybrid|hibrida/i.test(fullTextToScan) || (hasOnline && hasOffline)
+
+      if (hasHybrid) {
+        detectedLocation = 'Hybrid'
+      } else if (hasOnline) {
+        detectedLocation = 'Online'
+      } else if (hasOffline) {
+        detectedLocation = 'Onsite / Offline'
+      } else {
+        detectedLocation = 'Online' // Default fallback for tech competitions
+      }
+    }
+
+    if (detectedLocation) {
+      compUpdatePayload.location = detectedLocation
     }
 
     if (extInfo.notes && typeof extInfo.notes === 'string' && extInfo.notes.trim()) {
