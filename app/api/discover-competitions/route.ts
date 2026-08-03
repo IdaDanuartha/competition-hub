@@ -45,28 +45,23 @@ export async function POST(req: Request) {
     }
 
     const currentDateObj = new Date()
-    const currentYear = currentDateObj.getFullYear()
-    const todayIso = currentDateObj.toISOString().split('T')[0] // e.g. "2026-08-04"
+    const systemPrompt = `You are an expert research assistant that finds real, currently OPEN or UPCOMING competitions, hackathons, and IT contests in INDONESIA.
 
-    const systemPrompt = `You are a research assistant that finds real, currently OPEN or UPCOMING competitions, hackathons, and contests in INDONESIA.
-
-CRITICAL INDONESIA & YEAR CONSTRAINTS:
-- LOCATION: You MUST ONLY search for and return competitions, hackathons, and contests held in INDONESIA or targeted specifically for Indonesian students, developers, and participants.
-- Today's date is ${todayIso} (Year ${currentYear}).
-- You MUST ONLY search for and return competitions that are CURRENTLY OPEN for registration or UPCOMING in ${currentYear} or ${currentYear + 1}.
-- ABSOLUTELY DO NOT return any competition from past years (such as 2021, 2022, 2023, 2024, or 2025) or competitions whose deadlines have ALREADY PASSED before ${todayIso}.
-- Every returned competition MUST have a registration deadline or submission deadline that is in the FUTURE (on or after ${todayIso}).
-- Summary snippets and text details MUST be written in Bahasa Indonesia.
-- Never invent deadlines. If unsure of exact date, state the estimated future month in ${currentYear}.
+SEARCH CONSTRAINTS & LOCATION:
+1. LOCATION: Search ONLY for competitions held in INDONESIA or targeted for Indonesian students, developers, and participants (e.g., Gemastik, CompFest, KMIPN, HackFest, Lomba Web Development, Hackathon Indonesia, dsb.).
+2. STATUS: Only return competitions that are currently open for registration or upcoming.
+3. EXCLUDE: Do NOT return old past competitions from 2023 or earlier (2020, 2021, 2022, 2023).
+4. LANGUAGE: Summary snippets and titles MUST be written in Bahasa Indonesia.
+5. REALITY: Extract genuine competition names, organizers, and official website URLs.
 
 For each competition found, extract:
-- name: official competition name (MUST be currently active in Indonesia in ${currentYear})
-- organizer: organizing body/institution (e.g. Universitas, Kemenkominfo, Puspresnas, Komunitas AI Indonesia), or null if unclear
+- name: official competition name (in Indonesia)
+- organizer: organizing body/institution (e.g. Universitas, Kemenkominfo, Puspresnas, Komunitas Tech Indonesia), or null if unclear
 - theme: the competition's theme or main focus in Indonesian, or null if unclear
-- tags: 2-5 short category tags (e.g. "hackathon", "AI", "mahasiswa", "design")
+- tags: 2-5 short category tags (e.g. "hackathon", "web_development", "AI", "mahasiswa", "ui_ux_design")
 - website_url: official website or registration page URL
-- registration_deadline: ISO 8601 date string of the FUTURE registration deadline, or null if unspecified
-- submission_deadline: ISO 8601 date string of the FUTURE submission deadline, or null if unspecified
+- registration_deadline: ISO 8601 date string of the registration deadline, or null if unspecified
+- submission_deadline: ISO 8601 date string of the submission deadline, or null if unspecified
 - summary_snippet: 1-2 sentence summary in Bahasa Indonesia of what the competition is about
 
 Return ONLY a valid JSON object matching this schema, with no markdown fences:
@@ -85,7 +80,7 @@ Return ONLY a valid JSON object matching this schema, with no markdown fences:
   ]
 }
 
-If nothing relevant is currently open in Indonesia in ${currentYear}, return { "results": [] }.`
+If nothing relevant is found, return { "results": [] }.`
 
     const { geminiKeys, openaiKey } = await getEffectiveApiKeys()
 
@@ -96,7 +91,7 @@ If nothing relevant is currently open in Indonesia in ${currentYear}, return { "
       )
     }
 
-    const userPromptText = `Cari lomba, hackathon, atau kompetisi di INDONESIA yang saat ini sedang buka pendaftaran atau akan datang di tahun ${currentYear} dengan kata kunci: "${keywords}". Pastikan seluruh lomba berada di Indonesia, untuk peserta Indonesia, dan tenggat waktu belum terlewat.`
+    const userPromptText = `Cari lomba, hackathon, atau kompetisi IT/teknologi terbaru di INDONESIA untuk kata kunci: "${keywords}". Utamakan lomba yang saat ini sedang buka pendaftaran atau akan datang untuk mahasiswa/umum di Indonesia.`
 
     let geminiModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']
     if (preferred_model && preferred_model.startsWith('gemini')) {
@@ -225,28 +220,21 @@ If nothing relevant is currently open in Indonesia in ${currentYear}, return { "
       )
     }
 
-    // Post-fetch Filter: Strictly remove past year competitions and expired deadlines
+    // Post-fetch Filter: Only filter out explicit old years (2020-2023)
     const rawItems = Array.isArray(parsedResult.results) ? parsedResult.results : []
     const activeResults = rawItems.filter((item) => {
-      // 1. Filter out if title or summary explicitly contains past years (2020-2025)
       const textToTest = `${item.name || ''} ${item.summary_snippet || ''}`
-      if (/\b(2020|2021|2022|2023|2024|2025)\b/.test(textToTest)) {
+      // Filter out only old historical years (2018 - 2023)
+      if (/\b(2018|2019|2020|2021|2022|2023)\b/.test(textToTest)) {
         return false
       }
-
-      // 2. Filter out if deadlines are in the past
-      const regDate = item.registration_deadline ? item.registration_deadline.slice(0, 10) : null
-      const subDate = item.submission_deadline ? item.submission_deadline.slice(0, 10) : null
-
-      if (regDate && regDate < todayIso && subDate && subDate < todayIso) {
-        return false
-      }
-
       return true
     })
 
+    const finalResults = activeResults.length > 0 ? activeResults : rawItems
+
     return NextResponse.json({
-      results: activeResults,
+      results: finalResults,
       model_used: modelUsed,
     })
   } catch (err: any) {
