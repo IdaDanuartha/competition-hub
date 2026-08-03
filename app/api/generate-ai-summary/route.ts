@@ -397,7 +397,7 @@ Inspect all pages and tables in the PDF document. Extract the real, actual overv
     const totalDurationSec = ((Date.now() - startTime) / 1000).toFixed(2)
     addLog(`[6/6] Menyimpan analisis & ${(parsedResult.rundown_timeline || []).length} agenda timeline ke database...`)
 
-    const { data: summaryRow, error: saveErr } = await (supabase as any)
+    let { data: summaryRow, error: saveErr } = await (supabase as any)
       .from('ai_summaries')
       .upsert(
         {
@@ -421,9 +421,35 @@ Inspect all pages and tables in the PDF document. Extract the real, actual overv
       .single()
 
     if (saveErr) {
+      addLog(`⚠️ Error menyimpan dengan metadata logs (${saveErr.message}), mencoba fallback upsert standar...`)
+      const fallbackRes = await (supabase as any)
+        .from('ai_summaries')
+        .upsert(
+          {
+            competition_id,
+            summary: parsedResult.summary ?? '',
+            theme_and_subtheme: parsedResult.theme_and_subtheme ?? null,
+            registration_fee: parsedResult.registration_fee ?? null,
+            key_requirements: parsedResult.key_requirements ?? [],
+            important_dates: parsedResult.important_dates ?? [],
+            judging_criteria: parsedResult.judging_criteria ?? [],
+            project_idea_suggestions: parsedResult.project_idea_suggestions ?? [],
+            model_used: modelUsed,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'competition_id' }
+        )
+        .select('*')
+        .single()
 
-      addLog(`❌ Error menyimpan ke ai_summaries: ${saveErr.message}`)
+      if (!fallbackRes.error) {
+        summaryRow = fallbackRes.data
+        addLog(`✓ Fallback upsert standar berhasil disimpan ke ai_summaries`)
+      } else {
+        addLog(`❌ Error fallback upsert: ${fallbackRes.error.message}`)
+      }
     }
+
 
     // Save rundown timeline items if present
     if (Array.isArray(parsedResult.rundown_timeline) && parsedResult.rundown_timeline.length > 0) {
