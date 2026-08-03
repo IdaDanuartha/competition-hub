@@ -28,21 +28,7 @@ export function useGenerateAiSummary() {
     mutationFn: async (args: string | { competitionId: string; preferredModel?: string }) => {
       const competitionId = typeof args === 'string' ? args : args.competitionId
       const preferredModel = typeof args === 'string' ? undefined : args.preferredModel
-      const supabase = createClient()
 
-      // Try Supabase Edge Function first
-      try {
-        const { data, error } = await supabase.functions.invoke('generate-ai-summary', {
-          body: { competition_id: competitionId, preferred_model: preferredModel },
-        })
-        if (!error && data && !data.error) {
-          return data as AiSummary
-        }
-      } catch (_e) {
-        console.warn('Edge function generate-ai-summary failed, attempting API route fallback...')
-      }
-
-      // Fallback to Next.js API Route
       const res = await fetch('/api/generate-ai-summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -56,6 +42,7 @@ export function useGenerateAiSummary() {
 
       return (await res.json()) as AiSummary
     },
+
     onSuccess: (_, args) => {
       const competitionId = typeof args === 'string' ? args : args.competitionId
       queryClient.invalidateQueries({ queryKey: ['ai-summary', competitionId] })
