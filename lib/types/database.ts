@@ -2,9 +2,19 @@ export type CompetitionStatus =
   | 'researching' | 'registered' | 'in_progress' | 'submitted'
   | 'finalist' | 'completed' | 'not_selected' | 'cancelled'
 
+export type ChatSession = {
+  id: string
+  competition_id: string
+  user_id: string
+  title: string
+  created_at: string
+  updated_at: string
+}
+
 export type ChatMessage = {
   id: string
   competition_id: string
+  session_id?: string | null
   user_id: string
   role: 'user' | 'assistant'
   content: string
@@ -129,6 +139,7 @@ export interface Database {
       ai_summaries: { Row: AiSummary; Insert: Partial<AiSummary> & { competition_id: string; summary: string }; Update: Partial<AiSummary>; Relationships: [] }
       portfolio_entries: { Row: PortfolioEntry; Insert: Partial<PortfolioEntry> & { user_id: string; name: string }; Update: Partial<PortfolioEntry>; Relationships: [] }
       chat_messages: { Row: ChatMessage; Insert: Partial<ChatMessage> & { competition_id: string; user_id: string; role: 'user' | 'assistant'; content: string }; Update: Partial<ChatMessage>; Relationships: [] }
+      chat_sessions: { Row: ChatSession; Insert: Partial<ChatSession> & { competition_id: string; user_id: string; title: string }; Update: Partial<ChatSession>; Relationships: [] }
     }
     Views: Record<string, never>
     Functions: Record<string, never>

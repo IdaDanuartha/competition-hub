@@ -7,6 +7,9 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
     const competition_id = searchParams.get('competition_id')
+    const session_id = searchParams.get('session_id')
+    const action = searchParams.get('action')
+
     if (!competition_id) {
       return NextResponse.json({ error: 'competition_id parameter is required' }, { status: 400 })
     }
@@ -17,17 +20,50 @@ export async function GET(req: Request) {
       supabase = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey) as any
     }
 
-    const { data, error } = await supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('competition_id', competition_id)
-      .order('created_at', { ascending: true })
+    // Action = 'sessions': Return list of chat sessions for this competition
+    if (action === 'sessions' || !session_id) {
+      const { data: sessions, error: sessErr } = await supabase
+        .from('chat_sessions')
+        .select('*')
+        .eq('competition_id', competition_id)
+        .order('updated_at', { ascending: false })
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      if (sessErr) {
+        return NextResponse.json({ error: sessErr.message }, { status: 500 })
+      }
+
+      // If a specific session_id was requested as well, get its messages
+      let messages: any[] = []
+      const activeSessionId = session_id || sessions?.[0]?.id
+
+      if (activeSessionId) {
+        const { data: msgData } = await supabase
+          .from('chat_messages')
+          .select('*')
+          .eq('session_id', activeSessionId)
+          .order('created_at', { ascending: true })
+        messages = msgData || []
+      }
+
+      return NextResponse.json({
+        sessions: sessions || [],
+        activeSessionId,
+        messages,
+      })
     }
 
-    return NextResponse.json({ messages: data || [] })
+    // Fetch messages for a specific session_id
+    const { data: messages, error: msgErr } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('session_id', session_id)
+      .order('created_at', { ascending: true })
+
+    if (msgErr) {
+      return NextResponse.json({ error: msgErr.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ messages: messages || [], activeSessionId: session_id })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Server error' }, { status: 500 })
   }
@@ -37,9 +73,7 @@ export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
     const competition_id = searchParams.get('competition_id')
-    if (!competition_id) {
-      return NextResponse.json({ error: 'competition_id parameter is required' }, { status: 400 })
-    }
+    const session_id = searchParams.get('session_id')
 
     let supabase = await createServerClient()
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -47,16 +81,21 @@ export async function DELETE(req: Request) {
       supabase = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey) as any
     }
 
-    const { error } = await supabase
-      .from('chat_messages')
-      .delete()
-      .eq('competition_id', competition_id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    // Delete a specific session
+    if (session_id) {
+      const { error } = await supabase.from('chat_sessions').delete().eq('id', session_id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ success: true, deletedSessionId: session_id })
     }
 
-    return NextResponse.json({ success: true })
+    // Delete all sessions for a competition
+    if (competition_id) {
+      const { error } = await supabase.from('chat_sessions').delete().eq('competition_id', competition_id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ success: true, competition_id })
+    }
+
+    return NextResponse.json({ error: 'competition_id or session_id parameter is required' }, { status: 400 })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Server error' }, { status: 500 })
   }
@@ -65,7 +104,7 @@ export async function DELETE(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}))
-    const { competition_id, messages = [], preferred_model } = body
+    const { competition_id, messages = [], preferred_model, session_id: incomingSessionId } = body
 
     if (!competition_id) {
       return NextResponse.json({ error: 'competition_id is required' }, { status: 400 })
@@ -80,7 +119,7 @@ export async function POST(req: Request) {
     const rawOpenaiKey = process.env.OPENAI_API_KEY
     const openaiKey = rawOpenaiKey ? rawOpenaiKey.replace(/^["']|["']$/g, '') : undefined
 
-    // 1. Supabase client setup (User cookie client with admin fallback)
+    // 1. Supabase client setup
     let supabase = await createServerClient()
     let { data: { user } } = await supabase.auth.getUser()
 
@@ -108,12 +147,45 @@ export async function POST(req: Request) {
     }
 
     const userId = user?.id || competition.user_id
-
-    // 2. Save latest user message to Supabase chat_messages table
     const lastUserMsg = messages[messages.length - 1]
+
+    // 2. Ensure active session_id (Create new session if not provided)
+    let activeSessionId = incomingSessionId
+
+    if (!activeSessionId) {
+      const sessionTitle = lastUserMsg?.content
+        ? lastUserMsg.content.slice(0, 36) + (lastUserMsg.content.length > 36 ? '...' : '')
+        : 'Percakapan Baru'
+
+      const { data: newSession } = await (supabase as any)
+        .from('chat_sessions')
+        .insert({
+          competition_id,
+          user_id: userId,
+          title: sessionTitle,
+          updated_at: new Date().toISOString(),
+        })
+        .select('*')
+        .single()
+
+      if (newSession) {
+        activeSessionId = newSession.id
+      }
+    }
+
+    // Update session title & timestamp if this is the first message or ongoing
+    if (activeSessionId) {
+      await (supabase as any)
+        .from('chat_sessions')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', activeSessionId)
+    }
+
+    // Save latest user message to chat_messages table
     if (lastUserMsg && lastUserMsg.role === 'user') {
       await (supabase as any).from('chat_messages').insert({
         competition_id,
+        session_id: activeSessionId,
         user_id: userId,
         role: 'user',
         content: lastUserMsg.content,
@@ -392,6 +464,7 @@ ATURAN PENTING:
       .from('chat_messages')
       .insert({
         competition_id,
+        session_id: activeSessionId,
         user_id: userId,
         role: 'assistant',
         content: replyText,
@@ -407,6 +480,7 @@ ATURAN PENTING:
       content: replyText,
       model_used: modelUsed,
       has_pdf: !!pdfBase64,
+      session_id: activeSessionId,
     })
   } catch (err: any) {
     console.error('[Chat API Route Error]:', err)
