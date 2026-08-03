@@ -16,12 +16,13 @@ describe('statusLabel', () => {
 })
 
 describe('statusColorClass', () => {
-  it('maps researching to blue and submitted to green', () => {
+  it('maps researching to blue and cancelled to red', () => {
     expect(statusColorClass('researching')).toContain('blue')
-    expect(statusColorClass('submitted')).toContain('green')
-    expect(statusColorClass('not_selected')).toContain('red')
+    expect(statusColorClass('submitted')).toContain('indigo')
+    expect(statusColorClass('cancelled')).toContain('red')
   })
 })
+
 
 describe('statusProgress', () => {
   it('returns stage 1 of 6 for researching (not_selected excluded from the ladder)', () => {
