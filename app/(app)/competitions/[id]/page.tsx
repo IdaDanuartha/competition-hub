@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState } from 'react'
+import { use, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Trash2, Plus } from 'lucide-react'
 import { StatusBadge } from '@/components/competitions/StatusBadge'
@@ -55,7 +55,21 @@ export default function CompetitionDetailPage({ params }: { params: Promise<{ id
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false)
   const [isAddRundownModalOpen, setIsAddRundownModalOpen] = useState(false)
 
+  // Auto open AI Chat drawer if redirected from AI Hub with ?chat=open
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      if (urlParams.get('chat') === 'open') {
+        const timer = setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('open-ai-chat'))
+        }, 200)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [])
+
   if (isLoading || !competition) return null
+
 
   async function handleSubmit(values: CompetitionFormValues) {
     await mutateAsync(values)

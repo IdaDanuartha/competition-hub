@@ -7,6 +7,7 @@ import { cn } from '@/lib/cn'
 import { ThemeToggle } from '@/components/settings/ThemeToggle'
 import { OfflineBanner } from './OfflineBanner'
 import { InstallPrompt } from './InstallPrompt'
+import { AiHubSelectorModal } from './AiHubSelectorModal'
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -50,6 +51,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <LayoutDashboard className="h-4 w-4" />
             Dashboard
           </Link>
+          <button
+            type="button"
+            onClick={() => {
+              if (isCompetitionDetailPage) {
+                window.dispatchEvent(new CustomEvent('open-ai-chat'))
+              } else {
+                window.dispatchEvent(new CustomEvent('open-ai-hub-selector'))
+              }
+            }}
+            className="flex items-center gap-1.5 text-sm text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 font-semibold cursor-pointer transition-colors"
+          >
+            <Sparkles className="h-4 w-4 text-emerald-500 animate-pulse" />
+            Tanya AI
+          </button>
           <Link
             href="/settings"
             className={cn(
@@ -87,7 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span>Dashboard</span>
         </Link>
 
-        {/* Elevated Center Circular Button (Tanya AI) */}
+        {/* Elevated Center Circular Button (AI Hub) */}
         <div className="relative flex flex-col items-center justify-center -mt-6">
           <button
             type="button"
@@ -95,8 +110,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               if (isCompetitionDetailPage) {
                 window.dispatchEvent(new CustomEvent('open-ai-chat'))
               } else {
-                // If not on detail page, navigate to dashboard or show prompt
-                window.location.href = '/dashboard'
+                window.dispatchEvent(new CustomEvent('open-ai-hub-selector'))
               }
             }}
             className="flex h-13 w-13 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-500 text-white shadow-lg shadow-emerald-600/30 border-4 border-zinc-50 dark:border-zinc-950 hover:scale-105 active:scale-95 transition-all group cursor-pointer"
@@ -124,6 +138,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <InstallPrompt />
+      <AiHubSelectorModal />
     </div>
   )
 }
+
