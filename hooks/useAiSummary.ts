@@ -47,6 +47,8 @@ export function useGenerateAiSummary() {
       const competitionId = typeof args === 'string' ? args : args.competitionId
       queryClient.invalidateQueries({ queryKey: ['ai-summary', competitionId] })
       queryClient.invalidateQueries({ queryKey: ['rundown-items', competitionId] })
+      queryClient.invalidateQueries({ queryKey: ['competitions', competitionId] })
+      queryClient.invalidateQueries({ queryKey: ['competitions'] })
     },
   })
 }

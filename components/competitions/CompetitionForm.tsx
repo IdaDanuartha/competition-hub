@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
+import { DateTimePicker } from '@/components/ui/DateTimePicker'
 import { competitionSchema, type CompetitionFormValues } from '@/lib/validation'
 import { TAG_OPTIONS } from '@/lib/tags'
 import { cn } from '@/lib/cn'
@@ -252,44 +253,44 @@ export function CompetitionForm({
               <label htmlFor="registration_deadline" className="mb-1 block text-sm font-medium text-zinc-900 dark:text-zinc-50">
                 Registration Deadline
               </label>
-              <Input
+              <DateTimePicker
                 id="registration_deadline"
-                type="datetime-local"
                 value={values.registration_deadline}
-                onChange={(e) => set('registration_deadline', e.target.value)}
+                onChange={(val) => set('registration_deadline', val)}
+                placeholder="Pilih batas pendaftaran..."
               />
             </div>
             <div>
               <label htmlFor="submission_deadline" className="mb-1 block text-sm font-medium text-zinc-900 dark:text-zinc-50">
                 Submission Deadline
               </label>
-              <Input
+              <DateTimePicker
                 id="submission_deadline"
-                type="datetime-local"
                 value={values.submission_deadline}
-                onChange={(e) => set('submission_deadline', e.target.value)}
+                onChange={(val) => set('submission_deadline', val)}
+                placeholder="Pilih batas submit karya..."
               />
             </div>
             <div>
               <label htmlFor="event_start_at" className="mb-1 block text-sm font-medium text-zinc-900 dark:text-zinc-50">
                 Event Start
               </label>
-              <Input
+              <DateTimePicker
                 id="event_start_at"
-                type="datetime-local"
                 value={values.event_start_at}
-                onChange={(e) => set('event_start_at', e.target.value)}
+                onChange={(val) => set('event_start_at', val)}
+                placeholder="Pilih tanggal mulai..."
               />
             </div>
             <div>
               <label htmlFor="event_end_at" className="mb-1 block text-sm font-medium text-zinc-900 dark:text-zinc-50">
                 Event End
               </label>
-              <Input
+              <DateTimePicker
                 id="event_end_at"
-                type="datetime-local"
                 value={values.event_end_at}
-                onChange={(e) => set('event_end_at', e.target.value)}
+                onChange={(val) => set('event_end_at', val)}
+                placeholder="Pilih tanggal selesai..."
               />
             </div>
           </div>

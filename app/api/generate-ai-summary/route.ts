@@ -54,6 +54,83 @@ function parseIndonesianDateToIso(dateStr: string): string | null {
   return null
 }
 
+function computeCompetitionDates(parsedResult: any) {
+  let registration_deadline: string | null = null
+  let submission_deadline: string | null = null
+  let event_start_at: string | null = null
+  let event_end_at: string | null = null
+
+  // 1. Direct from AI extracted_deadlines if provided and valid ISO
+  if (parsedResult?.extracted_deadlines) {
+    const ex = parsedResult.extracted_deadlines
+    if (ex.registration_deadline_iso && !isNaN(Date.parse(ex.registration_deadline_iso))) {
+      registration_deadline = ex.registration_deadline_iso
+    }
+    if (ex.submission_deadline_iso && !isNaN(Date.parse(ex.submission_deadline_iso))) {
+      submission_deadline = ex.submission_deadline_iso
+    }
+    if (ex.event_start_at_iso && !isNaN(Date.parse(ex.event_start_at_iso))) {
+      event_start_at = ex.event_start_at_iso
+    }
+    if (ex.event_end_at_iso && !isNaN(Date.parse(ex.event_end_at_iso))) {
+      event_end_at = ex.event_end_at_iso
+    }
+  }
+
+  // 2. Fallback parse from rundown_timeline items
+  const timeline: Array<{ title: string; iso_date?: string; date_str?: string }> = parsedResult?.rundown_timeline || []
+  const validItems = timeline
+    .map((item) => {
+      let iso: string | undefined = item.iso_date
+      if (!iso || isNaN(Date.parse(iso))) {
+        iso = parseIndonesianDateToIso(item.date_str || '') || parseIndonesianDateToIso(item.title || '') || undefined
+      }
+      return { title: (item.title || '').toLowerCase(), iso }
+    })
+    .filter((x): x is { title: string; iso: string } => Boolean(x.iso && !isNaN(Date.parse(x.iso))))
+
+  if (validItems.length > 0) {
+    // Sort items chronologically
+    validItems.sort((a, b) => new Date(a.iso).getTime() - new Date(b.iso).getTime())
+
+    // Event Start: earliest item date
+    if (!event_start_at) {
+      event_start_at = validItems[0].iso
+    }
+
+    // Event End: latest item date (Awarding/Closing)
+    if (!event_end_at) {
+      event_end_at = validItems[validItems.length - 1].iso
+    }
+
+    // Registration Deadline: last item matching registration keywords
+    if (!registration_deadline) {
+      const regItems = validItems.filter((x) =>
+        /pendaftaran|registrasi|registration|wave|gelombang|batch|tahap pendaftaran/i.test(x.title)
+      )
+      if (regItems.length > 0) {
+        registration_deadline = regItems[regItems.length - 1].iso
+      } else {
+        registration_deadline = validItems[0].iso
+      }
+    }
+
+    // Submission Deadline: last item matching submission keywords
+    if (!submission_deadline) {
+      const subItems = validItems.filter((x) =>
+        /pengumpulan|submission|submit|unggah|upload|berkas|proposal|karya|project|bapp/i.test(x.title)
+      )
+      if (subItems.length > 0) {
+        submission_deadline = subItems[subItems.length - 1].iso
+      } else {
+        submission_deadline = registration_deadline
+      }
+    }
+  }
+
+  return { registration_deadline, submission_deadline, event_start_at, event_end_at }
+}
+
 export async function POST(req: Request) {
   const startTime = Date.now()
   const logs: string[] = []
@@ -233,6 +310,13 @@ CRITICAL MANDATES FOR ABSOLUTE ACCURACY & COMPLETENESS:
    - ONLY use real dates written in the PDF document.
    - For the iso_date field: convert the END DATE / DEADLINE of each agenda item to a precise ISO 8601 string with time default 12:00:00 PM (12 siang) (e.g., for "1 - 15 Juli 2026", use "2026-07-15T12:00:00.000Z").
 
+7. EXTRACTED COMPETITION DEADLINES:
+   - Carefully identify the 4 primary key milestone dates of the competition:
+     1) "registration_deadline_iso": ISO 8601 date string of the LAST REGISTRATION WAVE/BATCH DEADLINE (e.g. Batch 2 / Gelombang 3 / Regular Deadline).
+     2) "submission_deadline_iso": ISO 8601 date string of the FINAL SUBMISSION DEADLINE for proposal, project, or work submission.
+     3) "event_start_at_iso": ISO 8601 date string of the FIRST EVENT START DATE / OPENING OF REGISTRATION.
+     4) "event_end_at_iso": ISO 8601 date string of the FINAL EVENT END DATE / AWARDING CEREMONY.
+
 Return ONLY a valid JSON object matching this schema:
 {
   "summary": "Deskripsi murni kompetisi berdasarkan dokumen resmi.",
@@ -252,6 +336,12 @@ Return ONLY a valid JSON object matching this schema:
       "rationale": "Alasan ide ini kuat"
     }
   ],
+  "extracted_deadlines": {
+    "registration_deadline_iso": "ISO 8601 string tanggal akhir gelombang pendaftaran terakhir",
+    "submission_deadline_iso": "ISO 8601 string tanggal terakhir submit proposal/project",
+    "event_start_at_iso": "ISO 8601 string tanggal mulai pertama pendaftaran/event",
+    "event_end_at_iso": "ISO 8601 string tanggal penutupan/awarding"
+  },
   "rundown_timeline": [
     {
       "title": "Nama Agenda Resmi dari Tabel Dokumen",
@@ -477,9 +567,30 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
     }
 
 
-    // Save rundown timeline items if present
+    // 1. Auto update competition dates columns (registration, submission, start, end) from AI extraction
+    const compDates = computeCompetitionDates(parsedResult)
+    const compUpdatePayload: Record<string, any> = {}
+    if (compDates.registration_deadline) compUpdatePayload.registration_deadline = compDates.registration_deadline
+    if (compDates.submission_deadline) compUpdatePayload.submission_deadline = compDates.submission_deadline
+    if (compDates.event_start_at) compUpdatePayload.event_start_at = compDates.event_start_at
+    if (compDates.event_end_at) compUpdatePayload.event_end_at = compDates.event_end_at
+
+    if (Object.keys(compUpdatePayload).length > 0) {
+      const { error: compUpdateErr } = await (supabase as any)
+        .from('competitions')
+        .update(compUpdatePayload)
+        .eq('id', competition_id)
+
+      if (compUpdateErr) {
+        addLog(`⚠️ Gagal memperbarui kolom tanggal kompetisi: ${compUpdateErr.message}`)
+      } else {
+        addLog(`✓ 4 Kolom Tanggal Kompetisi (Registration, Submission, Start, End) berhasil ter-update otomatis`)
+      }
+    }
+
+    // 2. Save rundown timeline items if present
     if (Array.isArray(parsedResult.rundown_timeline) && parsedResult.rundown_timeline.length > 0) {
-      // Delete old auto-generated items first
+      // Delete old auto-generated items first (including trigger items)
       await supabase.from('rundown_items').delete().eq('competition_id', competition_id).eq('is_auto_generated', true)
 
       const rundownInserts = parsedResult.rundown_timeline.map((item: any) => {

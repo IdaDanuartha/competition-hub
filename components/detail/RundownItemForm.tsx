@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
+import { DateTimePicker } from '@/components/ui/DateTimePicker'
 import { rundownItemSchema, type RundownItemFormValues } from '@/lib/validation'
 
 interface RundownItemFormProps {
@@ -50,7 +51,7 @@ export function RundownItemForm({ onSubmit, onCancel }: RundownItemFormProps) {
       </div>
       <div>
         <label htmlFor="rundown-date" className="mb-1 block text-sm font-medium">Date / time</label>
-        <Input id="rundown-date" type="datetime-local" value={eventAt} onChange={(e) => setEventAt(e.target.value)} />
+        <DateTimePicker id="rundown-date" value={eventAt} onChange={(val) => setEventAt(val)} placeholder="Pilih tanggal & waktu agenda..." />
         {errors.event_at && <p className="mt-1 text-sm text-red-600">{errors.event_at}</p>}
       </div>
       <div>

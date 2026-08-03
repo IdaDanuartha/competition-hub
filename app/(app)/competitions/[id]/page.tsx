@@ -24,6 +24,7 @@ import { useDeleteCompetition } from '@/hooks/useCompetitions'
 import { useRundownItems, useCreateRundownItem, useNotificationLogs } from '@/hooks/useRundown'
 import { useAiSummary, useGenerateAiSummary } from '@/hooks/useAiSummary'
 import { formatTag } from '@/lib/tags'
+import { isoToDatetimeLocal } from '@/lib/date-format'
 import type { CompetitionFormValues } from '@/lib/validation'
 
 function AiSummarySection({ competitionId, onGenerateStateChange }: { competitionId: string; onGenerateStateChange?: (isGenerating: boolean) => void }) {
@@ -56,6 +57,7 @@ export default function CompetitionDetailPage({ params }: { params: Promise<{ id
   const [isEditing, setIsEditing] = useState(false)
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false)
   const [isAddRundownModalOpen, setIsAddRundownModalOpen] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
 
   // Auto open AI Chat drawer if redirected from AI Hub with ?chat=open
   useEffect(() => {
@@ -72,10 +74,14 @@ export default function CompetitionDetailPage({ params }: { params: Promise<{ id
 
   if (isLoading || !competition) return null
 
-
   async function handleSubmit(values: CompetitionFormValues) {
-    await mutateAsync(values)
-    setIsEditing(false)
+    setEditError(null)
+    try {
+      await mutateAsync(values)
+      setIsEditing(false)
+    } catch (err: any) {
+      setEditError(err?.message || 'Gagal menyimpan perubahan kompetisi. Silakan periksa kembali input Anda.')
+    }
   }
 
   async function handleConfirmDelete() {
@@ -123,27 +129,34 @@ export default function CompetitionDetailPage({ params }: { params: Promise<{ id
       />
 
       {isEditing ? (
-        <CompetitionForm
-          defaultValues={{
-            name: competition.name,
-            organizer: competition.organizer ?? '',
-            theme: competition.theme ?? '',
-            team_name: competition.team_name ?? '',
-            team_members: competition.team_members ?? [],
-            instagram_url: competition.instagram_url ?? '',
-            website_url: competition.website_url ?? '',
-            registration_deadline: competition.registration_deadline ?? '',
-            submission_deadline: competition.submission_deadline ?? '',
-            event_start_at: competition.event_start_at ?? '',
-            event_end_at: competition.event_end_at ?? '',
-            location: competition.location ?? '',
-            notes: competition.notes ?? '',
-            tags: competition.tags,
-          }}
-          onSubmit={handleSubmit}
-          submitLabel="Save changes"
-          isEditMode={true}
-        />
+        <div className="space-y-3">
+          {editError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-600 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-400">
+              {editError}
+            </div>
+          )}
+          <CompetitionForm
+            defaultValues={{
+              name: competition.name,
+              organizer: competition.organizer ?? '',
+              theme: competition.theme ?? '',
+              team_name: competition.team_name ?? '',
+              team_members: competition.team_members ?? [],
+              instagram_url: competition.instagram_url ?? '',
+              website_url: competition.website_url ?? '',
+              registration_deadline: isoToDatetimeLocal(competition.registration_deadline ?? null),
+              submission_deadline: isoToDatetimeLocal(competition.submission_deadline ?? null),
+              event_start_at: isoToDatetimeLocal(competition.event_start_at ?? null),
+              event_end_at: isoToDatetimeLocal(competition.event_end_at ?? null),
+              location: competition.location ?? '',
+              notes: competition.notes ?? '',
+              tags: competition.tags,
+            }}
+            onSubmit={handleSubmit}
+            submitLabel="Save changes"
+            isEditMode={true}
+          />
+        </div>
       ) : (
         <div className="space-y-6">
           <div className="space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
