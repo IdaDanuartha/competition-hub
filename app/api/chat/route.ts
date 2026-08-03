@@ -3,6 +3,73 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { compressPdfBuffer } from '@/lib/pdf-compressor'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const competition_id = searchParams.get('competition_id')
+    if (!competition_id) {
+      return NextResponse.json({ error: 'competition_id parameter is required' }, { status: 400 })
+    }
+
+    let supabase = await createServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      if (serviceRoleKey) {
+        supabase = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey) as any
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('competition_id', competition_id)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ messages: data || [] })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || 'Server error' }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const competition_id = searchParams.get('competition_id')
+    if (!competition_id) {
+      return NextResponse.json({ error: 'competition_id parameter is required' }, { status: 400 })
+    }
+
+    let supabase = await createServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      if (serviceRoleKey) {
+        supabase = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey) as any
+      }
+    }
+
+    const { error } = await supabase
+      .from('chat_messages')
+      .delete()
+      .eq('competition_id', competition_id)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || 'Server error' }, { status: 500 })
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}))
@@ -23,6 +90,8 @@ export async function POST(req: Request) {
 
     // 1. Supabase client setup (User cookie client with admin fallback)
     let supabase = await createServerClient()
+    let { data: { user } } = await supabase.auth.getUser()
+
     let { data: competition, error: compErr } = await supabase
       .from('competitions')
       .select('*')
@@ -46,21 +115,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Competition not found' }, { status: 404 })
     }
 
-    // 2. Fetch competition rundown items
+    const userId = user?.id || competition.user_id
+
+    // 2. Save latest user message to Supabase chat_messages table
+    const lastUserMsg = messages[messages.length - 1]
+    if (lastUserMsg && lastUserMsg.role === 'user') {
+      await (supabase as any).from('chat_messages').insert({
+        competition_id,
+        user_id: userId,
+        role: 'user',
+        content: lastUserMsg.content,
+      })
+    }
+
+    // 3. Fetch competition rundown items
     const { data: rundowns } = await supabase
       .from('rundown_items')
       .select('title, description, event_at')
       .eq('competition_id', competition_id)
       .order('event_at', { ascending: true })
 
-    // 3. Fetch existing AI Summary
+    // 4. Fetch existing AI Summary
     const { data: aiSummary } = await supabase
       .from('ai_summaries')
       .select('*')
       .eq('competition_id', competition_id)
       .maybeSingle()
 
-    // 4. Fetch latest guidebook document
+    // 5. Fetch latest guidebook document
     const { data: docs } = await supabase
       .from('competition_documents')
       .select('*')
@@ -137,8 +219,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 5. Construct Static Context for PROMPT CACHING
-    // Keeping static system prompt identical across turns enables automatic prompt caching for OpenAI & Gemini!
+    // 6. Construct Static Context for PROMPT CACHING
     const metadataContext = `
 COMPETITION DATA:
 - Name: ${competition.name}
@@ -314,7 +395,22 @@ ATURAN PENTING:
       return NextResponse.json({ error: 'Gagal mendapatkan respon dari AI.' }, { status: 500 })
     }
 
+    // 7. Save assistant's reply into Supabase chat_messages table
+    const { data: savedAssistantMsg } = await (supabase as any)
+      .from('chat_messages')
+      .insert({
+        competition_id,
+        user_id: userId,
+        role: 'assistant',
+        content: replyText,
+        model_used: modelUsed,
+        has_pdf: !!pdfBase64,
+      })
+      .select('*')
+      .maybeSingle()
+
     return NextResponse.json({
+      id: savedAssistantMsg?.id || Date.now().toString(),
       role: 'assistant',
       content: replyText,
       model_used: modelUsed,

@@ -2,6 +2,17 @@ export type CompetitionStatus =
   | 'researching' | 'registered' | 'in_progress' | 'submitted'
   | 'finalist' | 'completed' | 'not_selected' | 'cancelled'
 
+export type ChatMessage = {
+  id: string
+  competition_id: string
+  user_id: string
+  role: 'user' | 'assistant'
+  content: string
+  model_used: string | null
+  has_pdf: boolean | null
+  created_at: string
+}
+
 export type DocumentType = 'guidebook' | 'addendum' | 'template' | 'other'
 export type NotificationStatus = 'sent' | 'failed'
 export type RundownGenerationMode = 'auto' | 'manual'
@@ -117,6 +128,7 @@ export interface Database {
       user_settings: { Row: UserSettings; Insert: Partial<UserSettings> & { id: string }; Update: Partial<UserSettings>; Relationships: [] }
       ai_summaries: { Row: AiSummary; Insert: Partial<AiSummary> & { competition_id: string; summary: string }; Update: Partial<AiSummary>; Relationships: [] }
       portfolio_entries: { Row: PortfolioEntry; Insert: Partial<PortfolioEntry> & { user_id: string; name: string }; Update: Partial<PortfolioEntry>; Relationships: [] }
+      chat_messages: { Row: ChatMessage; Insert: Partial<ChatMessage> & { competition_id: string; user_id: string; role: 'user' | 'assistant'; content: string }; Update: Partial<ChatMessage>; Relationships: [] }
     }
     Views: Record<string, never>
     Functions: Record<string, never>

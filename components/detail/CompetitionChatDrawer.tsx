@@ -111,35 +111,26 @@ export function CompetitionChatDrawer({ competitionId, competitionName }: Compet
   const [modelStatuses, setModelStatuses] = useState<Record<string, { status: any; message: string }>>({})
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
-  // Load chat history from localStorage for this specific competition
+  // Load chat history from Supabase database for this specific competition
   useEffect(() => {
-    if (typeof window !== 'undefined' && competitionId) {
-      const stored = localStorage.getItem(`ai-chat-history-${competitionId}`)
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored) as any[]
-          const restored: Message[] = parsed.map((m) => ({
-            ...m,
-            timestamp: new Date(m.timestamp),
-          }))
-          setMessages(restored)
-        } catch {
-          // ignore parse error
-        }
-      }
+    if (competitionId && isOpen) {
+      fetch(`/api/chat?competition_id=${competitionId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data.messages)) {
+            const restored: Message[] = data.messages.map((m: any) => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              timestamp: new Date(m.created_at || m.timestamp || Date.now()),
+              hasPdf: m.has_pdf,
+            }))
+            setMessages(restored)
+          }
+        })
+        .catch((err) => console.warn('[Chat History] Failed to load from Supabase:', err))
     }
-  }, [competitionId])
-
-  // Save chat history to localStorage whenever messages update
-  useEffect(() => {
-    if (typeof window !== 'undefined' && competitionId) {
-      if (messages.length > 0) {
-        localStorage.setItem(`ai-chat-history-${competitionId}`, JSON.stringify(messages))
-      } else {
-        localStorage.removeItem(`ai-chat-history-${competitionId}`)
-      }
-    }
-  }, [messages, competitionId])
+  }, [competitionId, isOpen])
 
   function handleModelChange(model: string) {
     setPreferredModel(model)
@@ -216,7 +207,7 @@ export function CompetitionChatDrawer({ competitionId, competitionName }: Compet
       }
 
       const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: data.id || (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.content,
         timestamp: new Date(),
@@ -243,8 +234,13 @@ export function CompetitionChatDrawer({ competitionId, competitionName }: Compet
     setTimeout(() => setCopiedId(null), 2000)
   }
 
-  const handleClearHistory = () => {
+  const handleClearHistory = async () => {
     setMessages([])
+    try {
+      await fetch(`/api/chat?competition_id=${competitionId}`, { method: 'DELETE' })
+    } catch (err) {
+      console.warn('[Chat History] Failed to clear in Supabase:', err)
+    }
   }
 
   return (
