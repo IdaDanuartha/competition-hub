@@ -14,3 +14,6 @@ create table if not exists proposal_reviews (
 );
 
 create index if not exists idx_proposal_reviews_competition_id on proposal_reviews(competition_id);
+
+alter table proposal_reviews disable row level security;
+

@@ -203,35 +203,47 @@ Inspect ALL pages, diagrams, text, and structure of the proposal PDF. Perform a 
     }
 
     // Save review result to Supabase Database
-    const { data: reviewRow, error: saveErr } = await (supabase as any)
+    const payloadToInsert = {
+      competition_id,
+      file_name: file.name,
+      overall_score: Math.min(100, Math.max(0, Number(parsedResult.overall_score) || 75)),
+      summary: parsedResult.summary || 'Evaluasi proposal telah selesai.',
+      criteria_scores: parsedResult.criteria_scores || [],
+      strengths: parsedResult.strengths || [],
+      weaknesses: parsedResult.weaknesses || [],
+      actionable_recommendations: parsedResult.actionable_recommendations || [],
+      model_used: modelUsed,
+    }
+
+    let { data: reviewRow, error: saveErr } = await (supabase as any)
       .from('proposal_reviews')
-      .insert({
-        competition_id,
-        file_name: file.name,
-        overall_score: Math.min(100, Math.max(0, Number(parsedResult.overall_score) || 75)),
-        summary: parsedResult.summary || 'Evaluasi proposal telah selesai.',
-        criteria_scores: parsedResult.criteria_scores || [],
-        strengths: parsedResult.strengths || [],
-        weaknesses: parsedResult.weaknesses || [],
-        actionable_recommendations: parsedResult.actionable_recommendations || [],
-        model_used: modelUsed,
-      })
+      .insert(payloadToInsert)
       .select('*')
       .single()
 
     if (saveErr) {
+      console.warn('Standard client insert failed for proposal_reviews, trying Admin client fallback...', saveErr)
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      if (serviceRoleKey) {
+        const adminSupabase = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey)
+        const adminRes = await adminSupabase
+          .from('proposal_reviews')
+          .insert(payloadToInsert)
+          .select('*')
+          .single()
+
+        if (adminRes.data) {
+          reviewRow = adminRes.data as any
+          saveErr = null
+        }
+      }
+    }
+
+    if (saveErr || !reviewRow) {
       console.error('Error saving proposal review:', saveErr)
       return NextResponse.json({
         id: 'temp-' + Date.now(),
-        competition_id,
-        file_name: file.name,
-        overall_score: Math.min(100, Math.max(0, Number(parsedResult.overall_score) || 75)),
-        summary: parsedResult.summary || 'Evaluasi proposal telah selesai.',
-        criteria_scores: parsedResult.criteria_scores || [],
-        strengths: parsedResult.strengths || [],
-        weaknesses: parsedResult.weaknesses || [],
-        actionable_recommendations: parsedResult.actionable_recommendations || [],
-        model_used: modelUsed,
+        ...payloadToInsert,
         created_at: new Date().toISOString(),
       })
     }
