@@ -132,7 +132,13 @@ export function ApiKeySettingsForm({
 
           <div className="space-y-2.5">
             {geminiKeysList.map((keyVal, idx) => {
-              const isVisible = showGeminiList[idx] ?? false
+              const isPreview = showGeminiList[idx] ?? false
+              const displayVal = isPreview && keyVal.trim().length > 0
+                ? (keyVal.trim().length <= 5
+                    ? keyVal.trim()
+                    : `••••••••••••••••${keyVal.trim().slice(-5)}`)
+                : keyVal
+
               return (
                 <div key={idx} className="space-y-1">
                   <div className="flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400 px-0.5">
@@ -149,18 +155,20 @@ export function ApiKeySettingsForm({
                   <div className="flex items-center gap-2">
                     <div className="relative flex-1">
                       <Input
-                        type={isVisible ? 'text' : 'password'}
+                        type={isPreview ? 'text' : 'password'}
+                        readOnly={isPreview}
                         placeholder={idx === 0 ? 'AIzaSy... (Key Utama)' : `AIzaSy... (Key Backup #${idx + 1})`}
-                        value={keyVal}
+                        value={displayVal}
                         onChange={(e) => handleUpdateGeminiKey(idx, e.target.value)}
                         className="pr-10 text-xs font-mono"
                       />
                       <button
                         type="button"
                         onClick={() => toggleShowGeminiKey(idx)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer text-[10px] font-mono flex items-center gap-1"
+                        title={isPreview ? 'Sembunyikan' : 'Intip 5 Karakter Terakhir'}
                       >
-                        {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        {isPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
 
@@ -180,6 +188,7 @@ export function ApiKeySettingsForm({
                 </div>
               )
             })}
+
           </div>
 
           <div className="flex items-center justify-between pt-1">
@@ -215,8 +224,15 @@ export function ApiKeySettingsForm({
           <div className="relative">
             <Input
               type={showOpenai ? 'text' : 'password'}
+              readOnly={showOpenai}
               placeholder="sk-proj-... (kosongkan untuk default .env)"
-              value={openaiKey}
+              value={
+                showOpenai && openaiKey.trim().length > 0
+                  ? (openaiKey.trim().length <= 5
+                      ? openaiKey.trim()
+                      : `••••••••••••••••${openaiKey.trim().slice(-5)}`)
+                  : openaiKey
+              }
               onChange={(e) => setOpenaiKey(e.target.value)}
               className="pr-10 text-xs font-mono"
             />
@@ -224,11 +240,13 @@ export function ApiKeySettingsForm({
               type="button"
               onClick={() => setShowOpenai(!showOpenai)}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
+              title={showOpenai ? 'Sembunyikan' : 'Intip 5 Karakter Terakhir'}
             >
               {showOpenai ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
         </div>
+
 
         {/* Submit Section */}
         <div className="flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800 pt-4">
