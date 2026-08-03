@@ -1,14 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { Trash2, Calendar, Loader2, Pencil, X, Check } from 'lucide-react'
+import { Trash2, Calendar, Loader2, Pencil, X, Check, Copy } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
 import { formatDateTime, isoToDatetimeLocal } from '@/lib/date-format'
-import { useDeleteRundownItem, useUpdateRundownItem } from '@/hooks/useRundown'
+import { useDeleteRundownItem, useUpdateRundownItem, useCreateRundownItem } from '@/hooks/useRundown'
 import type { RundownItem } from '@/lib/types/database'
 
 interface EditState {
@@ -47,6 +47,7 @@ function EditForm({
           onChange={(e) => setTitle(e.target.value)}
           placeholder="e.g. Technical Meeting"
           required
+          autoFocus
         />
       </div>
       <div>
@@ -85,8 +86,23 @@ export function RundownList({ items, isLoading }: { items: RundownItem[]; isLoad
   const competitionId = items[0]?.competition_id ?? ''
   const { mutate: deleteItem } = useDeleteRundownItem(competitionId)
   const { mutate: updateItem, isPending: isUpdating } = useUpdateRundownItem(competitionId)
+  const { mutate: createItem, isPending: isDuplicating } = useCreateRundownItem(competitionId)
   const [deleteTarget, setDeleteTarget] = useState<RundownItem | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+
+  function handleDuplicate(item: RundownItem, e: React.MouseEvent) {
+    e.stopPropagation()
+    const eventAtIso = item.event_at
+      ? (item.event_at.endsWith('Z') ? item.event_at : new Date(item.event_at).toISOString())
+      : new Date().toISOString()
+
+    createItem({
+      title: item.title,
+      description: item.description,
+      event_at: isoToDatetimeLocal(eventAtIso),
+      reminder_offsets_minutes: item.reminder_offsets_minutes ?? undefined,
+    })
+  }
 
   if (isLoading) {
     return (
@@ -129,11 +145,16 @@ export function RundownList({ items, isLoading }: { items: RundownItem[]; isLoad
             {/* Timeline Node Dot */}
             <div className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-2 border-sky-500 bg-white shadow-xs ring-4 ring-sky-100 dark:border-sky-400 dark:bg-zinc-900 dark:ring-sky-950/80" />
 
-            {/* Date Badge above card */}
-            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50/80 px-3 py-0.5 text-xs font-semibold text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/60 dark:text-sky-300">
+            {/* Date Badge above card (clickable to edit) */}
+            <button
+              type="button"
+              onClick={() => setEditingId(item.id)}
+              className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50/80 px-3 py-0.5 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/60 dark:text-sky-300 dark:hover:bg-sky-900/80 transition-colors cursor-pointer"
+              title="Klik untuk ubah tanggal"
+            >
               <Calendar className="h-3 w-3" />
               <span>{formatDateTime(item.event_at)}</span>
-            </div>
+            </button>
 
             {/* Inline Edit Form */}
             {editingId === item.id ? (
@@ -149,20 +170,30 @@ export function RundownList({ items, isLoading }: { items: RundownItem[]; isLoad
                 }}
               />
             ) : (
-              /* Timeline Item Card */
-              <div className="group relative flex items-start justify-between rounded-xl border border-zinc-200 bg-white p-4 shadow-xs transition-shadow hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900">
-                <div className="space-y-1 pr-4">
+              /* Timeline Item Card - Clicking text opens edit mode directly */
+              <div
+                onClick={() => setEditingId(item.id)}
+                className="group relative flex items-start justify-between rounded-xl border border-zinc-200 bg-white p-4 shadow-xs transition-all hover:border-sky-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-sky-700/60 cursor-pointer"
+                title="Klik teks untuk langsung edit"
+              >
+                <div className="space-y-1 pr-4 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-semibold text-zinc-900 dark:text-zinc-50">{item.title}</h4>
+                    <h4 className="font-semibold text-zinc-900 dark:text-zinc-50 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+                      {item.title}
+                    </h4>
                     {item.is_auto_generated && (
                       <Badge className="bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300 border-0 text-[11px]">
                         Auto
                       </Badge>
                     )}
                   </div>
-                  {item.description && (
+                  {item.description ? (
                     <p className="text-xs leading-relaxed text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap">
                       {item.description}
+                    </p>
+                  ) : (
+                    <p className="text-xs italic text-zinc-400 dark:text-zinc-500">
+                      Klik untuk menambah deskripsi...
                     </p>
                   )}
                 </div>
@@ -170,16 +201,34 @@ export function RundownList({ items, isLoading }: { items: RundownItem[]; isLoad
                 <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     type="button"
-                    onClick={() => setEditingId(item.id)}
+                    onClick={(e) => handleDuplicate(item, e)}
+                    disabled={isDuplicating}
                     className="p-1.5 rounded-lg text-zinc-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:text-sky-400 dark:hover:bg-sky-950/50 transition-colors cursor-pointer"
+                    title="Duplikat item ini"
+                    aria-label={`Duplicate ${item.title}`}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setEditingId(item.id)
+                    }}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:text-sky-400 dark:hover:bg-sky-950/50 transition-colors cursor-pointer"
+                    title="Edit item ini"
                     aria-label={`Edit ${item.title}`}
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDeleteTarget(item)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDeleteTarget(item)
+                    }}
                     className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-950/50 transition-colors cursor-pointer"
+                    title="Hapus item ini"
                     aria-label={`Delete ${item.title}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
