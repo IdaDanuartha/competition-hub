@@ -142,9 +142,10 @@ JOB: Extract a list of MULTIPLE (4 to 10) real, distinct competitions, hackathon
 
 RULES:
 1. KEYWORD RELEVANCE: Extract competitions directly relevant to "${keywords}".
-2. SOURCES: Use the provided articles from infolombait.com and web search results. Extract accurate competition names, organizing institutions/universities, and direct links.
-3. DIVERSITY: Extract specific distinct competition names (e.g. APAC Stellar Hackathon, FIT Competition, IN:NOVATE CodeUp, Wreck-IT, Gemastik, CompFest, dsb.).
-4. LANGUAGE: Summary snippets and titles in Bahasa Indonesia.
+2. ACTIVE ONLY: Return ONLY competitions that are CURRENTLY OPEN for registration or UPCOMING. Do NOT return competitions that are already ended or whose deadline has passed.
+3. DEADLINE EXTRACTION: Always extract registration_deadline and submission_deadline as ISO 8601 date strings (e.g., "2026-05-15T23:59:00Z") if stated in the text.
+4. SOURCES: Use the provided articles from infolombait.com and web search results. Extract accurate competition names, organizing institutions/universities, and direct links.
+5. LANGUAGE: Summary snippets and titles in Bahasa Indonesia.
 
 For each competition, extract:
 - name: official competition name
@@ -152,8 +153,8 @@ For each competition, extract:
 - theme: the competition's theme or main focus in Indonesian, or null if unclear
 - tags: 2-5 short category tags (e.g. ["web_development", "hackathon", "mahasiswa"])
 - website_url: official website URL or infolombait.com article URL
-- registration_deadline: ISO 8601 string if mentioned, else null
-- submission_deadline: ISO 8601 string if mentioned, else null
+- registration_deadline: ISO 8601 date string if mentioned, else null
+- submission_deadline: ISO 8601 date string if mentioned, else null
 - summary_snippet: 1-2 sentence summary in Bahasa Indonesia
 
 Return ONLY valid JSON matching this schema, with no markdown fences:
@@ -281,12 +282,25 @@ If nothing relevant is found, return { "results": [] }.`
       return NextResponse.json({ error: 'Gagal memproses data lomba' }, { status: 502 })
     }
 
-    // Post-fetch Filter: Exclude old ended competitions (2018-2023)
+    // Post-fetch Filter: Exclude old ended competitions (2018-2023) or expired registration deadlines
+    const todayStr = new Date().toISOString().split('T')[0]
     const rawItems = Array.isArray(parsedResult.results) ? parsedResult.results : []
     const activeResults = rawItems.filter((item) => {
       const textToTest = `${item.name || ''} ${item.summary_snippet || ''}`
       if (/\b(2018|2019|2020|2021|2022|2023)\b/.test(textToTest)) {
         return false
+      }
+      if (item.registration_deadline) {
+        const regDateStr = item.registration_deadline.split('T')[0]
+        if (regDateStr < todayStr) {
+          return false
+        }
+      }
+      if (item.submission_deadline) {
+        const subDateStr = item.submission_deadline.split('T')[0]
+        if (subDateStr < todayStr) {
+          return false
+        }
       }
       return true
     })

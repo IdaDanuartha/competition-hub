@@ -1,20 +1,40 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, Compass } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { ModelSelector, type ModelOption } from '@/components/ui/ModelSelector'
 import { DiscoveredCompetitionCard } from '@/components/discover/DiscoveredCompetitionCard'
 import { useCompetitions } from '@/hooks/useCompetitions'
 import { usePreferredModel } from '@/hooks/usePreferredModel'
 import { PREFILL_STORAGE_KEY, type DiscoveredCompetition } from '@/lib/discover'
 
+const MODEL_OPTIONS: ModelOption[] = [
+  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (Rekomendasi)' },
+  { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+  { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+  { value: 'gpt-4o-mini', label: 'OpenAI gpt-4o-mini' },
+]
+
 export default function DiscoverPage() {
   const router = useRouter()
   const { data: competitions } = useCompetitions()
-  const [preferredModel] = usePreferredModel()
+  const [preferredModel, setPreferredModel] = usePreferredModel('gemini-2.5-flash')
+  const [modelStatuses, setModelStatuses] = useState<Record<string, any>>({})
+
+  useEffect(() => {
+    fetch('/api/ai-models-status')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.models) {
+          setModelStatuses(data.models)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   const defaultKeywords = useMemo(() => {
     if (!competitions) return ''
@@ -83,10 +103,22 @@ export default function DiscoverPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 py-6">
-      <div className="flex items-center gap-2">
-        <Compass className="h-5 w-5 text-sky-500" />
-        <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Discover</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Compass className="h-5 w-5 text-sky-500" />
+          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Discover</h1>
+        </div>
+
+        {/* AI Model Selector */}
+        <ModelSelector
+          options={MODEL_OPTIONS}
+          selectedModel={preferredModel}
+          modelStatuses={modelStatuses}
+          onSelectModel={(model) => setPreferredModel(model)}
+          disabled={isLoading}
+        />
       </div>
+
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
         Cari lomba/hackathon baru pakai AI web search, lalu tambahkan yang cocok ke Competitions kamu.
       </p>
@@ -123,7 +155,7 @@ export default function DiscoverPage() {
 
       {!isLoading && !error && hasSearched && results.length === 0 && (
         <p className="text-xs text-zinc-400 dark:text-zinc-500 text-center py-6">
-          Ga ketemu lomba, coba keyword lain.
+          Ga ketemu lomba aktif yang buka pendaftaran, coba keyword lain.
         </p>
       )}
 

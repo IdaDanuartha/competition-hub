@@ -1,6 +1,6 @@
 'use client'
 
-import { ExternalLink, Plus } from 'lucide-react'
+import { ExternalLink, Plus, Calendar, Clock } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { formatDate } from '@/lib/date-format'
@@ -51,12 +51,18 @@ export function DiscoveredCompetitionCard({ competition, onAdd }: DiscoveredComp
       )}
 
       {(competition.registration_deadline || competition.submission_deadline) && (
-        <div className="flex flex-wrap gap-3 text-[11px] text-zinc-500 dark:text-zinc-400">
+        <div className="flex flex-wrap items-center gap-2 pt-1 text-xs font-medium">
           {competition.registration_deadline && (
-            <span>Pendaftaran: {formatDate(competition.registration_deadline)}</span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-900/60">
+              <Calendar className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              Pendaftaran: {formatDate(competition.registration_deadline)}
+            </span>
           )}
           {competition.submission_deadline && (
-            <span>Submit: {formatDate(competition.submission_deadline)}</span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/60 dark:border-amber-900/60">
+              <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+              Deadline Submit: {formatDate(competition.submission_deadline)}
+            </span>
           )}
         </div>
       )}
