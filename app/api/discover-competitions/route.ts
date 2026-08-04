@@ -2,6 +2,64 @@ import { NextResponse } from 'next/server'
 import { getEffectiveApiKeys } from '@/lib/get-api-keys'
 import type { DiscoveredCompetition } from '@/lib/discover'
 
+async function fetchInfoLombaIT(userKeywords: string): Promise<Array<{ title: string; link: string; desc: string }>> {
+  const cleanKw = userKeywords.trim().replace(/^lomba\s*/i, '')
+  const searchUrl = `http://infolombait.com/feeds/posts/default?alt=json&q=${encodeURIComponent(cleanKw)}&max-results=20`
+
+  try {
+    const res = await fetch(searchUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      },
+      signal: AbortSignal.timeout(8000),
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      const entries = data.feed?.entry || []
+      const items = entries.map((entry: any) => {
+        const title = entry.title?.$t || ''
+        const link = entry.link?.find((l: any) => l.rel === 'alternate')?.href || ''
+        const content = entry.content?.$t || entry.summary?.$t || ''
+        const cleanContent = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500)
+        return { title, link, desc: cleanContent }
+      })
+      if (items.length > 0) return items
+    }
+  } catch {
+    // Fall through to recent posts fallback
+  }
+
+  // Fallback to recent posts if keyword search returned no items
+  try {
+    const recentUrl = 'http://infolombait.com/feeds/posts/default?alt=json&max-results=25'
+    const res = await fetch(recentUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      },
+      signal: AbortSignal.timeout(8000),
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      const entries = data.feed?.entry || []
+      return entries.map((entry: any) => {
+        const title = entry.title?.$t || ''
+        const link = entry.link?.find((l: any) => l.rel === 'alternate')?.href || ''
+        const content = entry.content?.$t || entry.summary?.$t || ''
+        const cleanContent = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500)
+        return { title, link, desc: cleanContent }
+      })
+    }
+  } catch {
+    // Return empty array
+  }
+
+  return []
+}
+
 async function fetchLiveWebSearch(userKeywords: string): Promise<Array<{ title: string; link: string; desc: string }>> {
   const cleanKw = userKeywords.trim()
   const hasLomba = /^lomba\b/i.test(cleanKw)
@@ -67,17 +125,25 @@ export async function POST(req: Request) {
       )
     }
 
-    // 1. Scraping live web search results for Indonesian competitions matching keywords
-    const liveSearchResults = await fetchLiveWebSearch(keywords)
+    // 1. Fetch from infolombait.com and general web search in parallel
+    const [infoLombaItems, webSearchItems] = await Promise.all([
+      fetchInfoLombaIT(keywords),
+      fetchLiveWebSearch(keywords),
+    ])
+
+    const combinedItems = [
+      ...infoLombaItems,
+      ...webSearchItems.filter((w) => !infoLombaItems.some((i) => i.link === w.link)),
+    ]
 
     const systemPrompt = `You are an expert research assistant specializing in Indonesian competitions, hackathons, and IT contests.
 
-JOB: Extract a list of MULTIPLE (4 to 8) real, distinct competitions, hackathons, or contests in INDONESIA specifically matching the user's keyword "${keywords}".
+JOB: Extract a list of MULTIPLE (4 to 10) real, distinct competitions, hackathons, or contests in INDONESIA specifically matching the user's keyword "${keywords}".
 
 RULES:
-1. KEYWORD RELEVANCE: All returned items MUST be directly relevant to "${keywords}". For example, if keywords relate to "web development", return web development/programming competitions; if "hackathon", return hackathons.
-2. DIVERSITY: Extract specific distinct competition names (e.g. CompFest Web Development, Gemastik Divisi Pemrograman/UX, KMIPN, HackFest, Information Systems Expo, Lomba Website Mahasiswa, dsb.).
-3. DO NOT return only 1 generic result if multiple relevant competitions exist. Return 4 to 8 competitions.
+1. KEYWORD RELEVANCE: Extract competitions directly relevant to "${keywords}".
+2. SOURCES: Use the provided articles from infolombait.com and web search results. Extract accurate competition names, organizing institutions/universities, and direct links.
+3. DIVERSITY: Extract specific distinct competition names (e.g. APAC Stellar Hackathon, FIT Competition, IN:NOVATE CodeUp, Wreck-IT, Gemastik, CompFest, dsb.).
 4. LANGUAGE: Summary snippets and titles in Bahasa Indonesia.
 
 For each competition, extract:
@@ -85,7 +151,7 @@ For each competition, extract:
 - organizer: organizing body/institution, or null if unclear
 - theme: the competition's theme or main focus in Indonesian, or null if unclear
 - tags: 2-5 short category tags (e.g. ["web_development", "hackathon", "mahasiswa"])
-- website_url: official website URL
+- website_url: official website URL or infolombait.com article URL
 - registration_deadline: ISO 8601 string if mentioned, else null
 - submission_deadline: ISO 8601 string if mentioned, else null
 - summary_snippet: 1-2 sentence summary in Bahasa Indonesia
@@ -108,8 +174,8 @@ Return ONLY valid JSON matching this schema, with no markdown fences:
 
 If nothing relevant is found, return { "results": [] }.`
 
-    const userPromptText = `User Keyword: "${keywords}"\n\n--- LIVE SEARCH RESULTS FROM INDONESIAN WEBSITES ---\n${JSON.stringify(
-      liveSearchResults,
+    const userPromptText = `User Keyword: "${keywords}"\n\n--- REAL COMPETITION ARTICLES FROM INFOLOMBAIT.COM & INDONESIAN WEBSITES ---\n${JSON.stringify(
+      combinedItems,
       null,
       2
     )}\n--- END SEARCH RESULTS ---`
@@ -121,9 +187,8 @@ If nothing relevant is found, return { "results": [] }.`
 
     let parsedResult: { results: DiscoveredCompetition[] } | null = null
     let modelUsed = preferred_model || 'gemini-2.5-flash'
-    let lastErrorMessage = 'Gagal mencari kompetisi'
 
-    // Attempt 1: Process live search results via Gemini AI
+    // Attempt 1: Process scraped articles via Gemini AI
     if (geminiKeys.length > 0) {
       for (let keyIdx = 0; keyIdx < geminiKeys.length; keyIdx++) {
         const currentGeminiKey = geminiKeys[keyIdx]
@@ -153,19 +218,16 @@ If nothing relevant is found, return { "results": [] }.`
                 break
               }
             } else if (res.status === 429) {
-              lastErrorMessage = `Rate limit (HTTP 429) pada key #${keyIdx + 1}. Mencoba failover...`
               await new Promise((r) => setTimeout(r, 400))
             }
-          } catch (e: any) {
-            lastErrorMessage = e?.message || 'Timeout'
-          }
+          } catch {}
         }
 
         if (parsedResult) break
       }
     }
 
-    // Attempt 2: Process live search results via OpenAI API if available
+    // Attempt 2: Process scraped articles via OpenAI API if available
     if (!parsedResult && openaiKey) {
       try {
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -193,16 +255,33 @@ If nothing relevant is found, return { "results": [] }.`
             modelUsed = 'gpt-4o-mini'
           }
         }
-      } catch (e: any) {
-        lastErrorMessage = e?.message || 'OpenAI error'
-      }
+      } catch {}
+    }
+
+    // Attempt 3: Direct Scraped Fallback (if AI API key rate limits or fails)
+    if (!parsedResult && combinedItems.length > 0) {
+      const fallbackResults: DiscoveredCompetition[] = combinedItems.slice(0, 10).map((item) => ({
+        name: item.title,
+        organizer: 'Info Lomba IT',
+        theme: null,
+        tags: [keywords, 'IT', 'indonesia'],
+        website_url: item.link,
+        registration_deadline: null,
+        submission_deadline: null,
+        summary_snippet: item.desc.slice(0, 200),
+      }))
+
+      return NextResponse.json({
+        results: fallbackResults,
+        model_used: 'infolombait-direct-scraper',
+      })
     }
 
     if (!parsedResult) {
-      return NextResponse.json({ error: lastErrorMessage }, { status: 502 })
+      return NextResponse.json({ error: 'Gagal memproses data lomba' }, { status: 502 })
     }
 
-    // Post-fetch Filter: Only filter out explicit old years (2018-2023)
+    // Post-fetch Filter: Exclude old ended competitions (2018-2023)
     const rawItems = Array.isArray(parsedResult.results) ? parsedResult.results : []
     const activeResults = rawItems.filter((item) => {
       const textToTest = `${item.name || ''} ${item.summary_snippet || ''}`
