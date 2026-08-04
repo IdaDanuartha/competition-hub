@@ -64,10 +64,12 @@ async function fetchLiveWebSearch(userKeywords: string): Promise<Array<{ title: 
   const cleanKw = userKeywords.trim()
   const hasLomba = /^lomba\b/i.test(cleanKw)
   const baseQuery = hasLomba ? cleanKw : `lomba ${cleanKw}`
+  const currentYear = new Date().getFullYear()
+  const nextYear = currentYear + 1
 
   const queries = [
-    `${baseQuery} indonesia`,
-    `kompetisi ${cleanKw.replace(/^lomba\s*/i, '')} indonesia 2024 2025`,
+    `${baseQuery} indonesia ${currentYear} ${nextYear}`,
+    `kompetisi ${cleanKw.replace(/^lomba\s*/i, '')} indonesia ${currentYear} ${nextYear}`,
   ]
 
   const items: Array<{ title: string; link: string; desc: string }> = []
@@ -136,23 +138,26 @@ export async function POST(req: Request) {
       ...webSearchItems.filter((w) => !infoLombaItems.some((i) => i.link === w.link)),
     ]
 
+    const currentYear = new Date().getFullYear()
+    const nextYear = currentYear + 1
+
     const systemPrompt = `You are an expert research assistant specializing in Indonesian competitions, hackathons, and IT contests.
 
-JOB: Extract a list of MULTIPLE (4 to 10) real, distinct competitions, hackathons, or contests in INDONESIA specifically matching the user's keyword "${keywords}".
+JOB: Extract a list of MULTIPLE (4 to 10) real, distinct active competitions, hackathons, or contests in INDONESIA specifically matching the user's keyword "${keywords}".
 
-RULES:
-1. KEYWORD RELEVANCE: Extract competitions directly relevant to "${keywords}".
-2. ACTIVE ONLY: Return ONLY competitions that are CURRENTLY OPEN for registration or UPCOMING. Do NOT return competitions that are already ended or whose deadline has passed.
-3. DEADLINE EXTRACTION: Always extract registration_deadline and submission_deadline as ISO 8601 date strings (e.g., "2026-05-15T23:59:00Z") if stated in the text.
-4. SOURCES: Use the provided articles from infolombait.com and web search results. Extract accurate competition names, organizing institutions/universities, and direct links.
+STRICT CONSTRAINTS:
+1. YEAR & TIMING: Only return LATEST competitions for ${currentYear} or ${nextYear}. Exclude all past/expired competitions from 2025, 2024, 2023 or earlier.
+2. DEADLINE STATUS: Only return competitions whose registration is CURRENTLY OPEN or UPCOMING (deadline has NOT passed yet, at least open until H-1 hour before closing). Exclude closed/expired competitions.
+3. DEADLINE EXTRACTION: Always extract registration_deadline as an ISO 8601 date string (e.g. "${currentYear}-08-30T23:59:00Z") if stated in the text.
+4. KEYWORD RELEVANCE: Extract competitions directly relevant to "${keywords}".
 5. LANGUAGE: Summary snippets and titles in Bahasa Indonesia.
 
 For each competition, extract:
-- name: official competition name
+- name: official competition name (must be active for ${currentYear} or ${nextYear})
 - organizer: organizing body/institution, or null if unclear
 - theme: the competition's theme or main focus in Indonesian, or null if unclear
 - tags: 2-5 short category tags (e.g. ["web_development", "hackathon", "mahasiswa"])
-- website_url: official website URL or infolombait.com article URL
+- website_url: official website URL or article URL
 - registration_deadline: ISO 8601 date string if mentioned, else null
 - submission_deadline: ISO 8601 date string if mentioned, else null
 - summary_snippet: 1-2 sentence summary in Bahasa Indonesia
@@ -283,26 +288,50 @@ If nothing relevant is found, return { "results": [] }.`
       return NextResponse.json({ error: 'Gagal memproses data lomba' }, { status: 502 })
     }
 
-    // Post-fetch Filter: Exclude old ended competitions (2018-2023) or expired registration deadlines
-    const todayStr = new Date().toISOString().split('T')[0]
+    // Post-fetch Filter: Strictly exclude old ended competitions (2018-2025) or expired registration deadlines
+    const now = new Date()
+    const todayStr = now.toISOString().split('T')[0]
+    const oneHourAgoMs = now.getTime() - 60 * 60 * 1000
+
     const rawItems = Array.isArray(parsedResult.results) ? parsedResult.results : []
     const activeResults = rawItems.filter((item) => {
       const textToTest = `${item.name || ''} ${item.summary_snippet || ''}`
-      if (/\b(2018|2019|2020|2021|2022|2023)\b/.test(textToTest)) {
+
+      // Reject all past years (2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025)
+      if (/\b(2018|2019|2020|2021|2022|2023|2024|2025)\b/.test(textToTest)) {
         return false
       }
+
+      // Filter registration_deadline threshold: must not be expired (at least H-1 hour before closing)
       if (item.registration_deadline) {
-        const regDateStr = item.registration_deadline.split('T')[0]
-        if (regDateStr < todayStr) {
-          return false
+        try {
+          const regDate = new Date(item.registration_deadline)
+          if (!isNaN(regDate.getTime()) && regDate.getTime() < oneHourAgoMs) {
+            return false
+          }
+        } catch {
+          const regDateStr = item.registration_deadline.split('T')[0]
+          if (regDateStr < todayStr) {
+            return false
+          }
         }
       }
+
+      // Filter submission_deadline threshold
       if (item.submission_deadline) {
-        const subDateStr = item.submission_deadline.split('T')[0]
-        if (subDateStr < todayStr) {
-          return false
+        try {
+          const subDate = new Date(item.submission_deadline)
+          if (!isNaN(subDate.getTime()) && subDate.getTime() < oneHourAgoMs) {
+            return false
+          }
+        } catch {
+          const subDateStr = item.submission_deadline.split('T')[0]
+          if (subDateStr < todayStr) {
+            return false
+          }
         }
       }
+
       return true
     })
 
