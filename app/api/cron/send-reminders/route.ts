@@ -28,13 +28,12 @@ async function handleSendReminders(req: Request) {
 
     const now = new Date()
     const nowMs = now.getTime()
-    const windowMinutes = 60 // 1 hour look-behind window to prevent missed crons
 
-    // 1. Query upcoming & recent rundown items (within next 14 days or past 1 hour)
+    // 1. Query upcoming & recent rundown items (from past 2 days to future)
     const { data: items, error: fetchErr } = await adminSupabase
       .from('rundown_items')
       .select('id, title, description, event_at, reminder_offsets_minutes, competition_id, competitions(name, user_id)')
-      .gte('event_at', new Date(nowMs - windowMinutes * 60_000).toISOString())
+      .gte('event_at', new Date(nowMs - 48 * 3600_000).toISOString())
       .order('event_at', { ascending: true })
 
     if (fetchErr) {
@@ -69,8 +68,10 @@ async function handleSendReminders(req: Request) {
       for (const offsetMins of offsets) {
         const triggerTimeMs = eventTimeMs - offsetMins * 60_000
 
-        // Check if NOW falls within the trigger window (from triggerTime up to triggerTime + 60 mins)
-        const isDue = nowMs >= triggerTimeMs && nowMs - triggerTimeMs <= windowMinutes * 60_000
+        // A reminder is due if:
+        // 1. The trigger time has arrived (nowMs >= triggerTimeMs)
+        // 2. The event hasn't already passed by more than 24 hours (eventTimeMs >= nowMs - 24 * 3600_000)
+        const isDue = nowMs >= triggerTimeMs && eventTimeMs >= nowMs - 24 * 3600_000
 
         if (!isDue) continue
 
