@@ -181,13 +181,13 @@ If nothing relevant is found, return { "results": [] }.`
       2
     )}\n--- END SEARCH RESULTS ---`
 
-    let geminiModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']
+    let geminiModels = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']
     if (preferred_model && preferred_model.startsWith('gemini')) {
       geminiModels = [preferred_model, ...geminiModels.filter((m) => m !== preferred_model)]
     }
 
     let parsedResult: { results: DiscoveredCompetition[] } | null = null
-    let modelUsed = preferred_model || 'gemini-2.5-flash'
+    let modelUsed = preferred_model || 'gemini-3.6-flash'
 
     // Attempt 1: Process scraped articles via Gemini AI
     if (geminiKeys.length > 0) {
@@ -230,6 +230,7 @@ If nothing relevant is found, return { "results": [] }.`
 
     // Attempt 2: Process scraped articles via OpenAI API if available
     if (!parsedResult && openaiKey) {
+      const openAiModel = preferred_model && preferred_model.startsWith('gpt-4') ? preferred_model : 'gpt-4o-mini'
       try {
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
@@ -238,7 +239,7 @@ If nothing relevant is found, return { "results": [] }.`
             Authorization: `Bearer ${openaiKey}`,
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: openAiModel,
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPromptText },
@@ -253,7 +254,7 @@ If nothing relevant is found, return { "results": [] }.`
           const rawText = data.choices?.[0]?.message?.content
           if (rawText) {
             parsedResult = JSON.parse(rawText)
-            modelUsed = 'gpt-4o-mini'
+            modelUsed = openAiModel
           }
         }
       } catch {}

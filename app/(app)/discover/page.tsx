@@ -13,16 +13,16 @@ import { usePreferredModel } from '@/hooks/usePreferredModel'
 import { PREFILL_STORAGE_KEY, type DiscoveredCompetition } from '@/lib/discover'
 
 const MODEL_OPTIONS: ModelOption[] = [
-  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (Rekomendasi)' },
-  { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-  { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-  { value: 'gpt-4o-mini', label: 'OpenAI gpt-4o-mini' },
+  { value: 'gemini-3.6-flash', label: 'gemini-3.6-flash (Fast & Smart)' },
+  { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash' },
+  { value: 'gpt-4o-mini', label: 'gpt-4o-mini (OpenAI Fast)' },
+  { value: 'gpt-4o', label: 'gpt-4o (OpenAI Flagship High-Reasoning)' },
 ]
 
 export default function DiscoverPage() {
   const router = useRouter()
   const { data: competitions } = useCompetitions()
-  const [preferredModel, setPreferredModel] = usePreferredModel('gemini-2.5-flash')
+  const [preferredModel, setPreferredModel] = usePreferredModel('gemini-3.6-flash')
   const [modelStatuses, setModelStatuses] = useState<Record<string, any>>({})
 
   useEffect(() => {
