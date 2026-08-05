@@ -320,14 +320,12 @@ CRITICAL MANDATES FOR ABSOLUTE ACCURACY & COMPLETENESS:
 Return ONLY a valid JSON object matching this schema:
 {
   "summary": "Deskripsi murni kompetisi berdasarkan dokumen resmi.",
-  "theme_and_subtheme": "Tema Utama: [Tema Resmi]\nSub-Tema:\n- [Kategori/Sub-Tema 1]\n- [Kategori/Sub-Tema 2]",
-  "registration_fee": "Batch 1 (Early Bird): Rp 100.000 / tim\nBatch 2 (Regular): Rp 150.000 / tim",
-  "key_requirements": ["Syarat 1", "Syarat 2", "Syarat 3"],
-  "important_dates": ["Tanggal 1", "Tanggal 2"],
+  "theme_and_subtheme": "Tema Utama: [Nama Tema Resmi dari Dokumen]\nSub-Tema:\n- [Nama Sub-Tema 1 dari Dokumen]\n- [Nama Sub-Tema 2 dari Dokumen]",
+  "registration_fee": "Rincian biaya pendaftaran dari dokumen (contoh: 'Gelombang 1: Rp X / tim', atau 'Gratis / Tidak dipungut biaya')",
+  "key_requirements": ["Persyaratan 1 dari dokumen", "Persyaratan 2 dari dokumen"],
+  "important_dates": ["Tanggal 1 dari dokumen", "Tanggal 2 dari dokumen"],
   "judging_criteria": [
-    "Babak Penyisihan - Keterampilan Teknis (30%)",
-    "Babak Penyisihan - Inovasi Solusi (30%)",
-    "Babak Final - Presentasi & QnA (40%)"
+    "[Nama Babak/Tahap] - [Nama Kriteria Penilaian] ([Bobot Persentase]%)"
   ],
   "project_idea_suggestions": [
     {
@@ -376,41 +374,45 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
 
     // Try OpenAI if requested
     if ((preferred_model === 'gpt-4o-mini' || preferred_model === 'gpt-4o') && openaiKey) {
-      try {
-        const modelReqStart = Date.now()
-        addLog(`[5/6] Mengirimkan payload ke OpenAI (${preferred_model})...`)
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${openaiKey}`,
-          },
-          body: JSON.stringify({
-            model: preferred_model,
-            messages: [
-              { role: 'system', content: systemPromptText },
-              { role: 'user', content: userPromptText },
-            ],
-            response_format: { type: 'json_object' },
-          }),
-          signal: AbortSignal.timeout(30000),
-        })
+      if (!pdfExtractedText || wordCount < 20) {
+        addLog(`⚠️ OpenAI GPT API tidak mendukung pengiriman file PDF langsung dan teks PDF kosong/pendek (${wordCount} kata). Beralih ke Gemini Multimodal PDF Engine...`)
+      } else {
+        try {
+          const modelReqStart = Date.now()
+          addLog(`[5/6] Mengirimkan payload ke OpenAI (${preferred_model})...`)
+          const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${openaiKey}`,
+            },
+            body: JSON.stringify({
+              model: preferred_model,
+              messages: [
+                { role: 'system', content: systemPromptText },
+                { role: 'user', content: userPromptText },
+              ],
+              response_format: { type: 'json_object' },
+            }),
+            signal: AbortSignal.timeout(30000),
+          })
 
-        const reqDuration = ((Date.now() - modelReqStart) / 1000).toFixed(2)
+          const reqDuration = ((Date.now() - modelReqStart) / 1000).toFixed(2)
 
-        if (res.ok) {
-          const data = await res.json()
-          const rawText = data.choices?.[0]?.message?.content
-          if (rawText) {
-            parsedResult = JSON.parse(rawText)
-            modelUsed = preferred_model
-            addLog(`✓ ${preferred_model} selesai memproses analisis (${reqDuration} detik)`)
+          if (res.ok) {
+            const data = await res.json()
+            const rawText = data.choices?.[0]?.message?.content
+            if (rawText) {
+              parsedResult = JSON.parse(rawText)
+              modelUsed = preferred_model
+              addLog(`✓ ${preferred_model} selesai memproses analisis (${reqDuration} detik)`)
+            }
+          } else {
+            addLog(`⚠️ OpenAI ${preferred_model} mengembalikan HTTP status ${res.status}`)
           }
-        } else {
-          addLog(`⚠️ OpenAI ${preferred_model} mengembalikan HTTP status ${res.status}`)
+        } catch (e: any) {
+          addLog(`⚠️ OpenAI ${preferred_model} error/timeout: ${e?.message || 'Error'}, beralih ke Gemini...`)
         }
-      } catch (e: any) {
-        addLog(`⚠️ OpenAI ${preferred_model} error/timeout: ${e?.message || 'Error'}, beralih ke Gemini...`)
       }
     }
 
