@@ -9,6 +9,7 @@ import { useUploadGuidebook } from '@/hooks/useUploadGuidebook'
 import { useDeleteDocument } from '@/hooks/useCompetitionDetail'
 import { useGenerateAiSummary, useAiSummary } from '@/hooks/useAiSummary'
 import type { CompetitionDocument } from '@/lib/types/database'
+import { RegenerateDataModal } from '@/components/detail/RegenerateDataModal'
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024
 
@@ -41,6 +42,8 @@ export function DocumentsSection({
   const { data: summaryData } = useAiSummary(competitionId)
   const { mutate: deleteDoc } = useDeleteDocument(competitionId)
   const [deleteTarget, setDeleteTarget] = useState<CompetitionDocument | null>(null)
+  const [pendingFileUploaded, setPendingFileUploaded] = useState<string | null>(null)
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   
   // Hidden by default as requested
   const [showLiveTerminal, setShowLiveTerminal] = useState(false)
@@ -108,11 +111,8 @@ export function DocumentsSection({
   async function handleFile(file: File) {
     await upload(file)
     queryClient.invalidateQueries({ queryKey: ['competition-documents', competitionId] })
-    try {
-      await generateAiSummary({ competitionId })
-    } catch (err) {
-      console.warn('Auto AI summary generation after upload failed:', err)
-    }
+    setPendingFileUploaded(file.name)
+    setIsUploadModalOpen(true)
   }
 
   const isProcessing = status === 'uploading' || isGeneratingAi
@@ -283,6 +283,22 @@ export function DocumentsSection({
           )}
         </div>
       )}
+
+      <RegenerateDataModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        isUploadMode={true}
+        fileName={pendingFileUploaded ?? undefined}
+        isGenerating={isGeneratingAi}
+        onConfirm={async ({ preferredModel, replaceFields }) => {
+          setIsUploadModalOpen(false)
+          try {
+            await generateAiSummary({ competitionId, preferredModel, replaceFields })
+          } catch (err) {
+            console.warn('AI extraction failed after upload:', err)
+          }
+        }}
+      />
     </div>
   )
 }

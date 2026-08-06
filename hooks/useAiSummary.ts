@@ -25,14 +25,19 @@ export function useAiSummary(competitionId: string) {
 export function useGenerateAiSummary() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (args: string | { competitionId: string; preferredModel?: string }) => {
+    mutationFn: async (args: string | { competitionId: string; preferredModel?: string; replaceFields?: string[] }) => {
       const competitionId = typeof args === 'string' ? args : args.competitionId
       const preferredModel = typeof args === 'string' ? undefined : args.preferredModel
+      const replaceFields = typeof args === 'string' ? undefined : args.replaceFields
 
       const res = await fetch('/api/generate-ai-summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ competition_id: competitionId, preferred_model: preferredModel }),
+        body: JSON.stringify({
+          competition_id: competitionId,
+          preferred_model: preferredModel,
+          replace_fields: replaceFields,
+        }),
       })
 
       if (!res.ok) {

@@ -35,10 +35,11 @@ describe('AiSummaryCard', () => {
     expect(screen.getByText(/Idea Alpha/i)).toBeInTheDocument()
   })
 
-  it('triggers onRegenerate when Regenerate button is clicked', async () => {
+  it('triggers onRegenerate when Regenerate button and modal confirm are clicked', async () => {
     const onRegenerate = vi.fn()
     render(<AiSummaryCard summary={mockSummary} isLoading={false} onRegenerate={onRegenerate} />)
     await userEvent.click(screen.getByRole('button', { name: /regenerate/i }))
+    await userEvent.click(screen.getByRole('button', { name: /perbarui data terpilih/i }))
     expect(onRegenerate).toHaveBeenCalled()
   })
 })

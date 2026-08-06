@@ -11,13 +11,14 @@ import { usePortfolio } from '@/hooks/usePortfolio'
 import { matchPortfolioEntries } from '@/lib/ai-summary'
 import type { AiSummary } from '@/lib/types/database'
 import { ModelSelector } from '@/components/ui/ModelSelector'
+import { RegenerateDataModal } from '@/components/detail/RegenerateDataModal'
 
 
 interface AiSummaryCardProps {
   summary: AiSummary | null
   isLoading: boolean
   isGenerating?: boolean
-  onRegenerate: (model?: string) => void
+  onRegenerate: (options?: { model?: string; replaceFields?: string[] }) => void
 }
 
 const MODEL_OPTIONS = [
@@ -331,6 +332,7 @@ export function AiSummaryCard({ summary, isLoading, isGenerating, onRegenerate }
   const [copied, setCopied] = useState(false)
   const [isExpanded, setIsExpanded] = useState(true)
   const [showLogs, setShowLogs] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedModel, setSelectedModel] = usePreferredModel('gemini-3.6-flash')
   const { data: portfolio = [] } = usePortfolio()
 
@@ -486,10 +488,7 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => {
-              setShowLogs(true)
-              onRegenerate(selectedModel)
-            }}
+            onClick={() => setIsModalOpen(true)}
             disabled={isGenerating}
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
@@ -609,6 +608,20 @@ ${summary.project_idea_suggestions.map((i) => `* ${i.title}: ${i.description} (R
           )}
         </div>
       )}
+
+      <RegenerateDataModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        initialModel={selectedModel}
+        isGenerating={isGenerating}
+        onConfirm={({ preferredModel, replaceFields }) => {
+          setSelectedModel(preferredModel)
+          localStorage.setItem('ai-summary-model', preferredModel)
+          setShowLogs(true)
+          setIsModalOpen(false)
+          onRegenerate({ model: preferredModel, replaceFields })
+        }}
+      />
     </Card>
   )
 }

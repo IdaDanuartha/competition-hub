@@ -145,6 +145,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}))
     const competition_id = body.competition_id || body.competitionId || body.id
     const preferred_model = body.preferred_model || body.preferredModel
+    const replace_fields: string[] | undefined = body.replace_fields || body.replaceFields
 
     if (!competition_id) {
       addLog('❌ Error: competition_id tidak diberikan')
@@ -523,48 +524,49 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
     const totalDurationSec = ((Date.now() - startTime) / 1000).toFixed(2)
     addLog(`[6/6] Menyimpan analisis & ${(parsedResult.rundown_timeline || []).length} agenda timeline ke database...`)
 
+    const shouldReplace = (key: string) => !replace_fields || replace_fields.length === 0 || replace_fields.includes(key)
+
+    let existingAiSummary: any = null
+    if (replace_fields && replace_fields.length > 0) {
+      const { data } = await (supabase as any)
+        .from('ai_summaries')
+        .select('*')
+        .eq('competition_id', competition_id)
+        .maybeSingle()
+      existingAiSummary = data
+    }
+
+    const summaryUpsertPayload: Record<string, any> = {
+      competition_id,
+      summary: shouldReplace('summary_theme') ? (parsedResult.summary ?? '') : (existingAiSummary?.summary ?? parsedResult.summary ?? ''),
+      theme_and_subtheme: shouldReplace('summary_theme') ? (parsedResult.theme_and_subtheme ?? null) : (existingAiSummary?.theme_and_subtheme ?? null),
+      registration_fee: shouldReplace('fee_requirements') ? (parsedResult.registration_fee ?? null) : (existingAiSummary?.registration_fee ?? null),
+      key_requirements: shouldReplace('fee_requirements') ? (parsedResult.key_requirements ?? []) : (existingAiSummary?.key_requirements ?? []),
+      important_dates: shouldReplace('dates') ? (parsedResult.important_dates ?? []) : (existingAiSummary?.important_dates ?? []),
+      judging_criteria: shouldReplace('criteria_ideas') ? (parsedResult.judging_criteria ?? []) : (existingAiSummary?.judging_criteria ?? []),
+      project_idea_suggestions: shouldReplace('criteria_ideas') ? (parsedResult.project_idea_suggestions ?? []) : (existingAiSummary?.project_idea_suggestions ?? []),
+      pdf_size_kb: pdfSizeBytes ? Math.round(pdfSizeBytes / 1024) : (existingAiSummary?.pdf_size_kb ?? null),
+      model_used: modelUsed,
+      execution_time_ms: Date.now() - startTime,
+      execution_log: logs,
+      updated_at: new Date().toISOString(),
+    }
+
     let { data: summaryRow, error: saveErr } = await (supabase as any)
       .from('ai_summaries')
-      .upsert(
-        {
-          competition_id,
-          summary: parsedResult.summary ?? '',
-          theme_and_subtheme: parsedResult.theme_and_subtheme ?? null,
-          registration_fee: parsedResult.registration_fee ?? null,
-          key_requirements: parsedResult.key_requirements ?? [],
-          important_dates: parsedResult.important_dates ?? [],
-          judging_criteria: parsedResult.judging_criteria ?? [],
-          project_idea_suggestions: parsedResult.project_idea_suggestions ?? [],
-          pdf_size_kb: pdfSizeBytes ? Math.round(pdfSizeBytes / 1024) : null,
-          model_used: modelUsed,
-          execution_time_ms: Date.now() - startTime,
-          execution_log: logs,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'competition_id' }
-      )
+      .upsert(summaryUpsertPayload, { onConflict: 'competition_id' })
       .select('*')
       .single()
 
     if (saveErr) {
       addLog(`⚠️ Error menyimpan dengan metadata logs (${saveErr.message}), mencoba fallback upsert standar...`)
+      delete summaryUpsertPayload.execution_log
+      delete summaryUpsertPayload.execution_time_ms
+      delete summaryUpsertPayload.pdf_size_kb
+
       const fallbackRes = await (supabase as any)
         .from('ai_summaries')
-        .upsert(
-          {
-            competition_id,
-            summary: parsedResult.summary ?? '',
-            theme_and_subtheme: parsedResult.theme_and_subtheme ?? null,
-            registration_fee: parsedResult.registration_fee ?? null,
-            key_requirements: parsedResult.key_requirements ?? [],
-            important_dates: parsedResult.important_dates ?? [],
-            judging_criteria: parsedResult.judging_criteria ?? [],
-            project_idea_suggestions: parsedResult.project_idea_suggestions ?? [],
-            model_used: modelUsed,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'competition_id' }
-        )
+        .upsert(summaryUpsertPayload, { onConflict: 'competition_id' })
         .select('*')
         .single()
 
@@ -576,70 +578,75 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
       }
     }
 
-
     // 1. Auto update competition dates & metadata columns from AI extraction
-    const compDates = computeCompetitionDates(parsedResult)
     const compUpdatePayload: Record<string, any> = {}
-    if (compDates.registration_deadline) compUpdatePayload.registration_deadline = compDates.registration_deadline
-    if (compDates.submission_deadline) compUpdatePayload.submission_deadline = compDates.submission_deadline
-    if (compDates.event_start_at) compUpdatePayload.event_start_at = compDates.event_start_at
-    if (compDates.event_end_at) compUpdatePayload.event_end_at = compDates.event_end_at
 
-    // Extract additional metadata fields (organizer, theme, instagram_url, website_url, location, notes)
+    if (shouldReplace('dates')) {
+      const compDates = computeCompetitionDates(parsedResult)
+      if (compDates.registration_deadline) compUpdatePayload.registration_deadline = compDates.registration_deadline
+      if (compDates.submission_deadline) compUpdatePayload.submission_deadline = compDates.submission_deadline
+      if (compDates.event_start_at) compUpdatePayload.event_start_at = compDates.event_start_at
+      if (compDates.event_end_at) compUpdatePayload.event_end_at = compDates.event_end_at
+    }
+
     const extInfo = parsedResult.extracted_info || {}
-    if (extInfo.organizer && typeof extInfo.organizer === 'string' && extInfo.organizer.trim()) {
-      compUpdatePayload.organizer = extInfo.organizer.trim()
-    }
-    if (extInfo.theme && typeof extInfo.theme === 'string' && extInfo.theme.trim()) {
-      compUpdatePayload.theme = extInfo.theme.trim()
-    } else if (parsedResult.theme_and_subtheme && typeof parsedResult.theme_and_subtheme === 'string') {
-      const firstLine = parsedResult.theme_and_subtheme.split('\n')[0].replace(/^Tema Utama:\s*/i, '').trim()
-      if (firstLine && firstLine !== '[Tema Resmi]') {
-        compUpdatePayload.theme = firstLine
+
+    if (shouldReplace('summary_theme')) {
+      if (extInfo.theme && typeof extInfo.theme === 'string' && extInfo.theme.trim()) {
+        compUpdatePayload.theme = extInfo.theme.trim()
+      } else if (parsedResult.theme_and_subtheme && typeof parsedResult.theme_and_subtheme === 'string') {
+        const firstLine = parsedResult.theme_and_subtheme.split('\n')[0].replace(/^Tema Utama:\s*/i, '').trim()
+        if (firstLine && firstLine !== '[Tema Resmi]') {
+          compUpdatePayload.theme = firstLine
+        }
       }
     }
 
-    if (extInfo.instagram_url && typeof extInfo.instagram_url === 'string') {
-      const cleanIg = extInfo.instagram_url.trim()
-      if (/^https?:\/\/(www\.)?instagram\.com\//i.test(cleanIg)) {
-        compUpdatePayload.instagram_url = cleanIg
+    if (shouldReplace('metadata')) {
+      if (extInfo.organizer && typeof extInfo.organizer === 'string' && extInfo.organizer.trim()) {
+        compUpdatePayload.organizer = extInfo.organizer.trim()
       }
-    }
 
-    if (extInfo.website_url && typeof extInfo.website_url === 'string') {
-      const cleanWeb = extInfo.website_url.trim()
-      if (/^https?:\/\//i.test(cleanWeb)) {
-        compUpdatePayload.website_url = cleanWeb
+      if (extInfo.instagram_url && typeof extInfo.instagram_url === 'string') {
+        const cleanIg = extInfo.instagram_url.trim()
+        if (/^https?:\/\/(www\.)?instagram\.com\//i.test(cleanIg)) {
+          compUpdatePayload.instagram_url = cleanIg
+        }
       }
-    }
 
-    let detectedLocation = (extInfo.location && typeof extInfo.location === 'string') ? extInfo.location.trim() : ''
-
-    // Fallback scanner for location if AI didn't provide location explicitly
-    if (!detectedLocation) {
-      const fullTextToScan = `${pdfExtractedText} ${parsedResult.summary || ''} ${JSON.stringify(parsedResult.key_requirements || [])} ${JSON.stringify(parsedResult.important_dates || [])}`.toLowerCase()
-      
-      const hasOnline = /online|daring|zoom|google meet|website|unggah|upload|submission|submit/i.test(fullTextToScan)
-      const hasOffline = /luring|onsite|tatap muka|aula|gedung|kampus|universitas|jakrta|depok|bandung|yogyakarta|surabaya/i.test(fullTextToScan)
-      const hasHybrid = /hybrid|hibrida/i.test(fullTextToScan) || (hasOnline && hasOffline)
-
-      if (hasHybrid) {
-        detectedLocation = 'Hybrid'
-      } else if (hasOnline) {
-        detectedLocation = 'Online'
-      } else if (hasOffline) {
-        detectedLocation = 'Onsite / Offline'
-      } else {
-        detectedLocation = 'Online' // Default fallback for tech competitions
+      if (extInfo.website_url && typeof extInfo.website_url === 'string') {
+        const cleanWeb = extInfo.website_url.trim()
+        if (/^https?:\/\//i.test(cleanWeb)) {
+          compUpdatePayload.website_url = cleanWeb
+        }
       }
-    }
 
-    if (detectedLocation) {
-      compUpdatePayload.location = detectedLocation
-    }
+      let detectedLocation = (extInfo.location && typeof extInfo.location === 'string') ? extInfo.location.trim() : ''
 
-    if (extInfo.notes && typeof extInfo.notes === 'string' && extInfo.notes.trim()) {
-      compUpdatePayload.notes = extInfo.notes.trim()
+      if (!detectedLocation) {
+        const fullTextToScan = `${pdfExtractedText} ${parsedResult.summary || ''} ${JSON.stringify(parsedResult.key_requirements || [])} ${JSON.stringify(parsedResult.important_dates || [])}`.toLowerCase()
+        const hasOnline = /online|daring|zoom|google meet|website|unggah|upload|submission|submit/i.test(fullTextToScan)
+        const hasOffline = /luring|onsite|tatap muka|aula|gedung|kampus|universitas|jakrta|depok|bandung|yogyakarta|surabaya/i.test(fullTextToScan)
+        const hasHybrid = /hybrid|hibrida/i.test(fullTextToScan) || (hasOnline && hasOffline)
+
+        if (hasHybrid) {
+          detectedLocation = 'Hybrid'
+        } else if (hasOnline) {
+          detectedLocation = 'Online'
+        } else if (hasOffline) {
+          detectedLocation = 'Onsite / Offline'
+        } else {
+          detectedLocation = 'Online'
+        }
+      }
+
+      if (detectedLocation) {
+        compUpdatePayload.location = detectedLocation
+      }
+
+      if (extInfo.notes && typeof extInfo.notes === 'string' && extInfo.notes.trim()) {
+        compUpdatePayload.notes = extInfo.notes.trim()
+      }
     }
 
     if (Object.keys(compUpdatePayload).length > 0) {
@@ -651,35 +658,30 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
       if (compUpdateErr) {
         addLog(`⚠️ Gagal memperbarui kolom kompetisi: ${compUpdateErr.message}`)
       } else {
-        addLog(`✓ ${Object.keys(compUpdatePayload).length} Kolom Metadata Kompetisi (Tanggal, Organizer, Theme, Links, Location, Notes) berhasil ter-update otomatis`)
+        addLog(`✓ ${Object.keys(compUpdatePayload).length} Kolom Metadata Kompetisi berhasil ter-update otomatis`)
       }
     }
 
-    // 2. Save rundown timeline items if present
-    if (Array.isArray(parsedResult.rundown_timeline) && parsedResult.rundown_timeline.length > 0) {
+    // 2. Save rundown timeline items if present and enabled
+    if (shouldReplace('rundown') && Array.isArray(parsedResult.rundown_timeline) && parsedResult.rundown_timeline.length > 0) {
       // Delete old auto-generated items first (including trigger items)
       await supabase.from('rundown_items').delete().eq('competition_id', competition_id).eq('is_auto_generated', true)
 
       const rundownInserts = parsedResult.rundown_timeline.map((item: any) => {
-        // Priority 1: Parse date_str using Indonesian parser (which extracts the END date & sets 12:00 PM)
         let validIsoDate: string | null = parseIndonesianDateToIso(item.date_str || '')
 
-        // Priority 2: Use AI's iso_date if available
         if (!validIsoDate && item.iso_date && !isNaN(Date.parse(item.iso_date))) {
           validIsoDate = item.iso_date
         }
 
-        // Priority 3: Try parsing from title
         if (!validIsoDate) {
           validIsoDate = parseIndonesianDateToIso(item.title || '')
         }
 
-        // Priority 4: Fallback
         if (!validIsoDate) {
           validIsoDate = new Date().toISOString()
         }
 
-        // Ensure default time is 12:00:00 (12 siang) if time part is 00:00 or 08:00
         if (validIsoDate.includes('T00:00:00') || validIsoDate.includes('T08:00:00')) {
           validIsoDate = validIsoDate.replace(/T\d{2}:\d{2}:\d{2}/, 'T12:00:00')
         }
@@ -712,6 +714,7 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
     if (summaryRow?.id) {
       await (supabase as any).from('ai_summaries').update({ execution_log: logs }).eq('id', summaryRow.id)
     }
+
 
     return NextResponse.json({
       ...(summaryRow || parsedResult),

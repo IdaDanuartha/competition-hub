@@ -36,7 +36,7 @@ function AiSummarySection({ competitionId, onGenerateStateChange }: { competitio
       summary={summary ?? null}
       isLoading={isLoading}
       isGenerating={isPending}
-      onRegenerate={(model) => generate({ competitionId, preferredModel: model })}
+      onRegenerate={(opts) => generate({ competitionId, preferredModel: opts?.model, replaceFields: opts?.replaceFields })}
     />
   )
 }
@@ -175,7 +175,7 @@ export default function CompetitionDetailPage({ params }: { params: Promise<{ id
             summary={summary ?? null}
             isLoading={isLoadingSummary}
             isGenerating={isGeneratingAi}
-            onRegenerate={(model) => generateAiSummary({ competitionId: id, preferredModel: model })}
+            onRegenerate={(opts) => generateAiSummary({ competitionId: id, preferredModel: opts?.model, replaceFields: opts?.replaceFields })}
           />
 
           <section className="space-y-3">
