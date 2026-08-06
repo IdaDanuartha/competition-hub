@@ -34,7 +34,7 @@ export function getCalendarCategory(autoSource: string | null, title?: string): 
     if (/mulai|start|opening|pembukaan|hari h|pelaksanaan/i.test(t)) {
       return 'event_start_at'
     }
-    if (/selesai|end|closing|penutupan|awarding|pengumuman|pemenang/i.test(t)) {
+    if (/selesai|closing|penutupan|awarding|pengumuman (?:pemenang|juara)/i.test(t)) {
       return 'event_end_at'
     }
   }

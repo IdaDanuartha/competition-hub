@@ -23,6 +23,7 @@ describe('getCalendarCategory', () => {
     expect(getCalendarCategory('guidebook_gemini-3.6-flash', 'Pengumpulan Berkas Proposal')).toBe('submission_deadline')
     expect(getCalendarCategory('guidebook_gemini-3.6-flash', 'Pembukaan Lomba')).toBe('event_start_at')
     expect(getCalendarCategory('guidebook_gemini-3.6-flash', 'Awarding & Penutupan')).toBe('event_end_at')
+    expect(getCalendarCategory('guidebook_gemini-3.6-flash', 'Pengumuman Finalis')).toBe('manual')
     expect(getCalendarCategory('guidebook_gemini-3.6-flash', 'Technical Meeting')).toBe('manual')
   })
 
