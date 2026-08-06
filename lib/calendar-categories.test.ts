@@ -12,6 +12,7 @@ describe('getCalendarCategory', () => {
     expect(getCalendarCategory('submission_deadline')).toBe('submission_deadline')
     expect(getCalendarCategory('event_start_at')).toBe('event_start_at')
     expect(getCalendarCategory('event_end_at')).toBe('event_end_at')
+    expect(getCalendarCategory('guidebook_gemini-3.6-flash')).toBe('guidebook')
   })
 
   it('maps null (manual items) to manual', () => {
@@ -45,6 +46,8 @@ describe('getCategoryLabel', () => {
     expect(getCategoryLabel('submission_deadline')).toBe('Submission deadline')
     expect(getCategoryLabel('event_start_at')).toBe('Event starts')
     expect(getCategoryLabel('event_end_at')).toBe('Event ends')
+    expect(getCategoryLabel('guidebook')).toBe('Guidebook AI')
     expect(getCategoryLabel('manual')).toBe('Manual / custom')
   })
 })
+
