@@ -189,7 +189,7 @@ export function DateTimePicker({
 
   return (
     <div ref={containerRef} className="relative inline-block w-full">
-      <input type="hidden" id={id} value={value || ''} readOnly />
+      <input type="text" id={id} value={value || ''} readOnly tabIndex={-1} className="sr-only" />
 
       {/* Trigger Button */}
       <div

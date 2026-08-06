@@ -8,8 +8,8 @@ describe('StatusBadge', () => {
     expect(screen.getByText('In Progress')).toBeInTheDocument()
   })
 
-  it('applies the red color class for not_selected', () => {
-    render(<StatusBadge status="not_selected" />)
-    expect(screen.getByText('Not Selected').className).toContain('red')
+  it('applies the red color class for cancelled', () => {
+    render(<StatusBadge status="cancelled" />)
+    expect(screen.getByText('Cancelled').className).toContain('red')
   })
 })

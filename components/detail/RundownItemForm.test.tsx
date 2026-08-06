@@ -1,7 +1,18 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { RundownItemForm } from './RundownItemForm'
+
+vi.mock('@/components/ui/DateTimePicker', () => ({
+  DateTimePicker: ({ id, value, onChange }: any) => (
+    <input
+      id={id}
+      aria-label="Date / time"
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
+}))
 
 describe('RundownItemForm', () => {
   it('rejects submission without a title', async () => {
