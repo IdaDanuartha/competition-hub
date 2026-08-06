@@ -1,6 +1,7 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { PortfolioEntry } from '@/lib/types/database'
 
@@ -37,8 +38,12 @@ export function useCreatePortfolioEntry() {
       if (error) throw error
       return data as PortfolioEntry
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['portfolio'] })
+      toast.success(`Portofolio "${data.name}" berhasil ditambahkan!`)
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal menambahkan portofolio.')
     },
   })
 }
@@ -53,6 +58,10 @@ export function useDeletePortfolioEntry() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portfolio'] })
+      toast.success('Portofolio berhasil dihapus!')
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal menghapus portofolio.')
     },
   })
 }

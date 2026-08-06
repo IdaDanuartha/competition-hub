@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 
 const STORAGE_BUCKET = 'guidebooks'
@@ -31,6 +32,7 @@ export function useUploadGuidebook(competitionId: string) {
       if (storageErr) {
         setStatus('error')
         setError(storageErr.message)
+        toast.error(`Upload gagal: ${storageErr.message}`)
         return
       }
 
@@ -56,14 +58,18 @@ export function useUploadGuidebook(competitionId: string) {
       if (insertError) {
         setStatus('error')
         setError(insertError.message)
+        toast.error(`Simpan dokumen gagal: ${insertError.message}`)
         return
       }
 
       setProgress(100)
       setStatus('done')
+      toast.success(`Dokumen "${file.name}" berhasil diunggah!`)
     } catch (e: any) {
+      const errMsg = e?.message || 'Upload failed'
       setStatus('error')
-      setError(e?.message || 'Upload failed')
+      setError(errMsg)
+      toast.error(errMsg)
     }
   }
 

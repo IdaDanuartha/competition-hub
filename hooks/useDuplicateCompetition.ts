@@ -1,6 +1,7 @@
 'use client'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { Competition } from '@/lib/types/database'
 
@@ -27,8 +28,13 @@ export function useDuplicateCompetition() {
       if (error) throw error
       return data as Competition
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['competitions'] })
+      toast.success(`Berhasil menduplikasi ke "${data.name}"!`)
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal menduplikasi kompetisi.')
     },
   })
 }
+

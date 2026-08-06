@@ -1,6 +1,7 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { AiSummary } from '@/lib/types/database'
 
@@ -42,7 +43,7 @@ export function useGenerateAiSummary() {
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}))
-        throw new Error(errJson.error || 'Failed to generate AI summary')
+        throw new Error(errJson.error || 'Gagal menghasilkan ringkasan AI')
       }
 
       return (await res.json()) as AiSummary
@@ -54,6 +55,11 @@ export function useGenerateAiSummary() {
       queryClient.invalidateQueries({ queryKey: ['rundown-items', competitionId] })
       queryClient.invalidateQueries({ queryKey: ['competitions', competitionId] })
       queryClient.invalidateQueries({ queryKey: ['competitions'] })
+      toast.success('Analisis AI & data kompetisi berhasil diperbarui!')
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal menghasilkan ringkasan AI.')
     },
   })
 }
+

@@ -1,6 +1,7 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { Competition, CompetitionDocument } from '@/lib/types/database'
 import type { CompetitionFormValues } from '@/lib/validation'
@@ -48,6 +49,10 @@ export function useUpdateCompetition(id: string) {
       queryClient.invalidateQueries({ queryKey: ['competitions', id] })
       queryClient.invalidateQueries({ queryKey: ['competitions'] })
       queryClient.invalidateQueries({ queryKey: ['rundown-items', id] })
+      toast.success('Detail kompetisi berhasil diperbarui!')
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal memperbarui detail kompetisi.')
     },
   })
 }
@@ -62,6 +67,11 @@ export function useDeleteDocument(competitionId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['competition-documents', competitionId] })
+      toast.success('Dokumen berhasil dihapus!')
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal menghapus dokumen.')
     },
   })
 }
+

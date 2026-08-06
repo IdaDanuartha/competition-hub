@@ -1,6 +1,7 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { ProposalReview } from '@/lib/types/database'
 
@@ -56,6 +57,10 @@ export function useReviewProposal() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['proposal-reviews', variables.competitionId] })
+      toast.success('Analisis review proposal selesai!')
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal mengevaluasi proposal.')
     },
   })
 }
@@ -75,6 +80,10 @@ export function useDeleteProposalReview() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['proposal-reviews', variables.competitionId] })
+      toast.success('Review proposal berhasil dihapus!')
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal menghapus review proposal.')
     },
   })
 }

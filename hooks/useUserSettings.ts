@@ -1,6 +1,7 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { UserSettings } from '@/lib/types/database'
 
@@ -37,6 +38,10 @@ export function useUpdateUserSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['user-settings'] })
       queryClient.invalidateQueries({ queryKey: ['rundown-items'] })
+      toast.success('Pengaturan pengguna berhasil disimpan!')
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal menyimpan pengaturan pengguna.')
     },
   })
 }

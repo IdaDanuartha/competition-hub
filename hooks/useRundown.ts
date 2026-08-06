@@ -1,6 +1,7 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { NotificationLog, RundownItem } from '@/lib/types/database'
 import type { RundownItemFormValues } from '@/lib/validation'
@@ -27,9 +28,6 @@ export function useCreateRundownItem(competitionId: string) {
   return useMutation({
     mutationFn: async (values: RundownItemFormValues) => {
       const supabase = createClient()
-      // Convert datetime-local value (e.g. "2026-08-08T23:59") to a proper UTC ISO string.
-      // new Date() treats a datetime-local string as LOCAL time and toISOString() converts it to UTC,
-      // preventing the +8h timezone shift when Supabase/PostgreSQL stores it as UTC.
       const eventAtIso = values.event_at
         ? new Date(values.event_at).toISOString()
         : values.event_at
@@ -40,6 +38,10 @@ export function useCreateRundownItem(competitionId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rundown-items', competitionId] })
+      toast.success('Agenda lomba berhasil ditambahkan!')
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal menambahkan agenda.')
     },
   })
 }
@@ -61,6 +63,10 @@ export function useUpdateRundownItem(competitionId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rundown-items', competitionId] })
       queryClient.invalidateQueries({ queryKey: ['next-rundown-dates'] })
+      toast.success('Agenda lomba berhasil diperbarui!')
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal memperbarui agenda.')
     },
   })
 }
@@ -75,6 +81,10 @@ export function useDeleteRundownItem(competitionId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rundown-items', competitionId] })
+      toast.success('Agenda lomba berhasil dihapus!')
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal menghapus agenda.')
     },
   })
 }

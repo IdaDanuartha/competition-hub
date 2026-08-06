@@ -2,6 +2,7 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { Competition, CompetitionStatus } from '@/lib/types/database'
 import type { CompetitionFormValues } from '@/lib/validation'
@@ -34,8 +35,12 @@ export function useCreateCompetition() {
       if (error) throw error
       return data as Competition
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['competitions'] })
+      toast.success(`Kompetisi "${data.name}" berhasil dibuat!`)
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal membuat kompetisi.')
     },
   })
 }
@@ -50,6 +55,10 @@ export function useUpdateCompetitionStatus() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['competitions'] })
+      toast.success('Status kompetisi berhasil diperbarui!')
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal memperbarui status kompetisi.')
     },
   })
 }
@@ -64,6 +73,11 @@ export function useDeleteCompetition() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['competitions'] })
+      toast.success('Kompetisi berhasil dihapus!')
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Gagal menghapus kompetisi.')
     },
   })
 }
+
