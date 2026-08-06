@@ -4,7 +4,13 @@ import { useState, useEffect } from 'react'
 import { subscribeToasts, toast, type ToastItem } from '@/lib/toast'
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react'
 
-export function Toaster() {
+export interface ToasterProps {
+  position?: string
+  richColors?: boolean
+  closeButton?: boolean
+}
+
+export function Toaster(_props?: ToasterProps) {
   const [items, setItems] = useState<ToastItem[]>([])
 
   useEffect(() => {
