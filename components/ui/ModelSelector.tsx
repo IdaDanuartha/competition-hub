@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Cpu, ChevronDown, Check, CheckCircle2, AlertTriangle, XCircle, HelpCircle } from 'lucide-react'
+import { Cpu, ChevronDown, Check, CheckCircle2, AlertTriangle, XCircle, HelpCircle, Loader2 } from 'lucide-react'
 
 export interface ModelOption {
   value: string
@@ -19,6 +19,7 @@ interface ModelSelectorProps {
   options: ModelOption[]
   selectedModel: string
   modelStatuses?: Record<string, ModelStatus>
+  isLoading?: boolean
   onSelectModel: (model: string) => void
   disabled?: boolean
   className?: string
@@ -29,6 +30,7 @@ export function ModelSelector({
   options,
   selectedModel,
   modelStatuses = {},
+  isLoading = false,
   onSelectModel,
   disabled = false,
   className = '',
@@ -37,8 +39,9 @@ export function ModelSelector({
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  const isCheckingStatus = isLoading || Object.keys(modelStatuses).length === 0
   const selectedOpt = options.find((o) => o.value === selectedModel) || options[0]
-  const currentSt = modelStatuses[selectedModel]?.status || 'active'
+  const currentSt = modelStatuses[selectedModel]?.status
 
   // Close on outside click
   useEffect(() => {
@@ -52,6 +55,15 @@ export function ModelSelector({
   }, [])
 
   function renderStatusBadge(status?: string) {
+    if (isCheckingStatus) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 dark:bg-zinc-800/80 dark:text-zinc-400">
+          <Loader2 className="h-2.5 w-2.5 animate-spin text-sky-500" />
+          <span>Cek...</span>
+        </span>
+      )
+    }
+
     if (status === 'rate_limited') {
       return (
         <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
@@ -115,13 +127,20 @@ export function ModelSelector({
         <div className="absolute right-0 top-full z-50 mt-1.5 w-72 rounded-2xl border border-zinc-200 bg-white/95 p-1.5 shadow-2xl backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/95 animate-in fade-in zoom-in-95 duration-150">
           <div className="px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-100 dark:border-zinc-800/80 mb-1 flex items-center justify-between">
             <span>Pilih Model AI Engine</span>
-            <span className="text-[10px] font-normal text-zinc-400">Status</span>
+            {isCheckingStatus ? (
+              <span className="text-[10px] font-normal text-sky-600 dark:text-sky-400 flex items-center gap-1">
+                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                Cek Status...
+              </span>
+            ) : (
+              <span className="text-[10px] font-normal text-zinc-400">Status</span>
+            )}
           </div>
 
           <div className="space-y-1">
             {options.map((opt) => {
               const isSelected = opt.value === selectedModel
-              const st = modelStatuses[opt.value]?.status || 'active'
+              const st = modelStatuses[opt.value]?.status
               const credit = modelStatuses[opt.value]?.credit
               return (
                 <button
@@ -153,7 +172,13 @@ export function ModelSelector({
                     </div>
                   </div>
 
-                  <div className="shrink-0">{renderStatusBadge(st)}</div>
+                  <div className="shrink-0">
+                    {isCheckingStatus ? (
+                      <span className="h-4 w-12 rounded-md bg-zinc-200/80 dark:bg-zinc-800 animate-pulse block" />
+                    ) : (
+                      renderStatusBadge(st)
+                    )}
+                  </div>
                 </button>
               )
             })}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 
 const STORAGE_BUCKET = 'guidebooks'

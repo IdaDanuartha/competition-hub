@@ -1,7 +1,7 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import type { ProposalReview } from '@/lib/types/database'
 
