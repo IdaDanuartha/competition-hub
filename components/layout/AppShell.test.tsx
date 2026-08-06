@@ -14,8 +14,8 @@ vi.mock('@/components/settings/ThemeToggle', () => ({ ThemeToggle: () => null })
 describe('AppShell', () => {
   it('renders a Calendar link marked active on /calendar', () => {
     render(<AppShell>content</AppShell>)
-    const link = screen.getByRole('link', { name: /calendar/i })
-    expect(link).toHaveAttribute('href', '/calendar')
-    expect(link.className).toMatch(/text-sky-600/)
+    const links = screen.getAllByRole('link', { name: /calendar/i })
+    expect(links[0]).toHaveAttribute('href', '/calendar')
+    expect(links[0].className).toMatch(/text-sky-600/)
   })
 })
