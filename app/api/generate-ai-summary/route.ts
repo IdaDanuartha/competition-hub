@@ -581,8 +581,9 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
     // 1. Auto update competition dates & metadata columns from AI extraction
     const compUpdatePayload: Record<string, any> = {}
 
+    const compDates = computeCompetitionDates(parsedResult)
+
     if (shouldReplace('dates')) {
-      const compDates = computeCompetitionDates(parsedResult)
       if (compDates.registration_deadline) compUpdatePayload.registration_deadline = compDates.registration_deadline
       if (compDates.submission_deadline) compUpdatePayload.submission_deadline = compDates.submission_deadline
       if (compDates.event_start_at) compUpdatePayload.event_start_at = compDates.event_start_at
@@ -663,50 +664,122 @@ Extract 100% of the real data: Overview, Main Theme, Subthemes/Categories, Regis
     }
 
     // 2. Save rundown timeline items if present and enabled
-    if (shouldReplace('rundown') && Array.isArray(parsedResult.rundown_timeline) && parsedResult.rundown_timeline.length > 0) {
-      // Delete old auto-generated items first (including trigger items)
+    if (shouldReplace('rundown') || shouldReplace('dates')) {
+      // Fetch latest competition row to ensure dates are accurate
+      const { data: latestComp } = await supabase
+        .from('competitions')
+        .select('registration_deadline, submission_deadline, event_start_at, event_end_at')
+        .eq('id', competition_id)
+        .single()
+
+      const activeDates = {
+        registration_deadline: latestComp?.registration_deadline || compDates.registration_deadline,
+        submission_deadline: latestComp?.submission_deadline || compDates.submission_deadline,
+        event_start_at: latestComp?.event_start_at || compDates.event_start_at,
+        event_end_at: latestComp?.event_end_at || compDates.event_end_at,
+      }
+
+      // Delete old auto-generated items first
       await supabase.from('rundown_items').delete().eq('competition_id', competition_id).eq('is_auto_generated', true)
 
-      const rundownInserts = parsedResult.rundown_timeline.map((item: any) => {
-        let validIsoDate: string | null = parseIndonesianDateToIso(item.date_str || '')
+      const allRundownInserts: any[] = []
 
-        if (!validIsoDate && item.iso_date && !isNaN(Date.parse(item.iso_date))) {
-          validIsoDate = item.iso_date
-        }
-
-        if (!validIsoDate) {
-          validIsoDate = parseIndonesianDateToIso(item.title || '')
-        }
-
-        if (!validIsoDate) {
-          validIsoDate = new Date().toISOString()
-        }
-
-        if (validIsoDate.includes('T00:00:00') || validIsoDate.includes('T08:00:00')) {
-          validIsoDate = validIsoDate.replace(/T\d{2}:\d{2}:\d{2}/, 'T12:00:00')
-        }
-
-        const description = item.description
-          ? `[${item.date_str || ''}] ${item.description}`
-          : item.date_str || ''
-
-        return {
+      // A. Insert 4 primary milestone items if active dates exist
+      if (activeDates.registration_deadline) {
+        allRundownInserts.push({
           competition_id,
-          title: item.title || 'Agenda Lomba',
-          description,
-          event_at: validIsoDate,
+          title: 'Registration deadline',
+          description: 'Batas akhir pendaftaran lomba',
+          event_at: activeDates.registration_deadline,
           is_auto_generated: true,
-          auto_source: `guidebook_${modelUsed}`,
-        }
-      })
+          auto_source: 'registration_deadline',
+        })
+      }
+      if (activeDates.submission_deadline) {
+        allRundownInserts.push({
+          competition_id,
+          title: 'Submission deadline',
+          description: 'Batas akhir pengumpulan berkas / proposal',
+          event_at: activeDates.submission_deadline,
+          is_auto_generated: true,
+          auto_source: 'submission_deadline',
+        })
+      }
+      if (activeDates.event_start_at) {
+        allRundownInserts.push({
+          competition_id,
+          title: 'Event starts',
+          description: 'Mulai pelaksanaan kegiatan lomba',
+          event_at: activeDates.event_start_at,
+          is_auto_generated: true,
+          auto_source: 'event_start_at',
+        })
+      }
+      if (activeDates.event_end_at) {
+        allRundownInserts.push({
+          competition_id,
+          title: 'Event ends',
+          description: 'Penutupan / pengumuman pemenang lomba',
+          event_at: activeDates.event_end_at,
+          is_auto_generated: true,
+          auto_source: 'event_end_at',
+        })
+      }
 
-      const { error: rundownErr } = await supabase.from('rundown_items').insert(rundownInserts)
-      if (rundownErr) {
-        addLog(`⚠️ Gagal menyisipkan agenda rundown: ${rundownErr.message}`)
-      } else {
-        addLog(`✓ ${rundownInserts.length} agenda rundown timeline resmi berhasil ditambahkan ke kalender`)
+      // B. Insert detailed guidebook timeline items if present
+      if (shouldReplace('rundown') && Array.isArray(parsedResult.rundown_timeline)) {
+        parsedResult.rundown_timeline.forEach((item: any) => {
+          let validIsoDate: string | null = parseIndonesianDateToIso(item.date_str || '')
+          if (!validIsoDate && item.iso_date && !isNaN(Date.parse(item.iso_date))) {
+            validIsoDate = item.iso_date
+          }
+          if (!validIsoDate) {
+            validIsoDate = parseIndonesianDateToIso(item.title || '')
+          }
+          if (!validIsoDate) {
+            validIsoDate = new Date().toISOString()
+          }
+          if (validIsoDate.includes('T00:00:00') || validIsoDate.includes('T08:00:00')) {
+            validIsoDate = validIsoDate.replace(/T\d{2}:\d{2}:\d{2}/, 'T12:00:00')
+          }
+
+          const title = item.title || 'Agenda Lomba'
+          const description = item.description
+            ? `[${item.date_str || ''}] ${item.description}`
+            : item.date_str || ''
+
+          // Check if this item duplicates one of the 4 milestone items exactly
+          const isMilestoneDuplicate = allRundownInserts.some(
+            (m) =>
+              (m.title.toLowerCase() === title.toLowerCase() ||
+                (m.auto_source === 'registration_deadline' && /pendaftaran|registrasi/i.test(title)) ||
+                (m.auto_source === 'submission_deadline' && /pengumpulan|submission/i.test(title))) &&
+              new Date(m.event_at).toDateString() === new Date(validIsoDate!).toDateString()
+          )
+
+          if (!isMilestoneDuplicate) {
+            allRundownInserts.push({
+              competition_id,
+              title,
+              description,
+              event_at: validIsoDate,
+              is_auto_generated: true,
+              auto_source: `guidebook_${modelUsed}`,
+            })
+          }
+        })
+      }
+
+      if (allRundownInserts.length > 0) {
+        const { error: rundownErr } = await supabase.from('rundown_items').insert(allRundownInserts)
+        if (rundownErr) {
+          addLog(`⚠️ Gagal menyisipkan agenda rundown: ${rundownErr.message}`)
+        } else {
+          addLog(`✓ ${allRundownInserts.length} agenda rundown & milestone tanggal resmi berhasil disimpan ke kalender`)
+        }
       }
     }
+
 
     addLog(`[SELESAI] Pipeline analisis AI sukses 100% (Total waktu: ${totalDurationSec} detik)`)
 
