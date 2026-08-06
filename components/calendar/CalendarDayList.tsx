@@ -37,7 +37,7 @@ export function CalendarDayList({ day, events }: CalendarDayListProps) {
       ) : (
         <div className="divide-y divide-zinc-50 dark:divide-zinc-800/60">
           {events.map((item) => {
-            const category = getCalendarCategory(item.auto_source)
+            const category = getCalendarCategory(item.auto_source, item.title)
             const colors = getCategoryColorClasses(category)
             return (
               <div key={item.id} className="flex items-center justify-between gap-4 px-4 py-2.5">

@@ -20,10 +20,28 @@ const KNOWN_SOURCES: Record<string, CalendarCategory> = {
   event_end_at: 'event_end_at',
 }
 
-export function getCalendarCategory(autoSource: string | null): CalendarCategory {
-  if (!autoSource) return 'manual'
-  return KNOWN_SOURCES[autoSource] ?? 'manual'
+export function getCalendarCategory(autoSource: string | null, title?: string): CalendarCategory {
+  if (autoSource && KNOWN_SOURCES[autoSource]) return KNOWN_SOURCES[autoSource]
+
+  if (title) {
+    const t = title.toLowerCase()
+    if (/pendaftaran|registrasi|registration|wave|gelombang|batch|tahap pendaftaran/i.test(t)) {
+      return 'registration_deadline'
+    }
+    if (/pengumpulan|submission|submit|unggah|upload|berkas|proposal|karya|project|bapp/i.test(t)) {
+      return 'submission_deadline'
+    }
+    if (/mulai|start|opening|pembukaan|hari h|pelaksanaan/i.test(t)) {
+      return 'event_start_at'
+    }
+    if (/selesai|end|closing|penutupan|awarding|pengumuman|pemenang/i.test(t)) {
+      return 'event_end_at'
+    }
+  }
+
+  return 'manual'
 }
+
 
 const COLOR_CLASSES: Record<CalendarCategory, { dot: string; badgeBg: string; badgeText: string }> = {
   registration_deadline: {

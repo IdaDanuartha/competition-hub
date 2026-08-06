@@ -83,7 +83,7 @@ export function CalendarGrid({ month, events, selectedDay, onSelectDay }: Calend
               <span className="text-[11px] font-semibold">{day.getDate()}</span>
               <div className="flex flex-wrap gap-0.5">
                 {visibleDots.map((event) => {
-                  const colors = getCategoryColorClasses(getCalendarCategory(event.auto_source))
+                  const colors = getCategoryColorClasses(getCalendarCategory(event.auto_source, event.title))
                   return <span key={event.id} data-testid="calendar-event-dot" className={cn('h-1.5 w-1.5 rounded-full', colors.dot)} />
                 })}
                 {overflowCount > 0 && <span className="text-[9px] font-medium">+{overflowCount}</span>}
