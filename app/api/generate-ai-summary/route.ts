@@ -7,24 +7,51 @@ import { getEffectiveApiKeys } from '@/lib/get-api-keys'
 
 function parseIndonesianDateToIso(dateStr: string): string | null {
   if (!dateStr) return null
+
+  // If already a valid ISO or parseable date string
+  if (!isNaN(Date.parse(dateStr)) && dateStr.length >= 10 && (dateStr.includes('-') || dateStr.includes('/'))) {
+    const d = new Date(dateStr)
+    if (!isNaN(d.getTime())) {
+      return d.toISOString()
+    }
+  }
+
   const months: Record<string, string> = {
-    januari: '01', jan: '01',
-    februari: '02', feb: '02',
-    maret: '03', mar: '03',
+    januari: '01', jan: '01', january: '01',
+    februari: '02', feb: '02', february: '02',
+    maret: '03', mar: '03', march: '03',
     april: '04', apr: '04',
-    mei: '05',
-    juni: '06', jun: '06',
-    juli: '07', jul: '07',
-    agustus: '08', ags: '08', agu: '08',
+    mei: '05', may: '05',
+    juni: '06', jun: '06', june: '06',
+    juli: '07', jul: '07', july: '07',
+    agustus: '08', ags: '08', agu: '08', august: '08', aug: '08',
     september: '09', sep: '09',
-    oktober: '10', okt: '10',
+    oktober: '10', okt: '10', october: '10', oct: '10',
     november: '11', nov: '11',
-    desember: '12', des: '12',
+    desember: '12', des: '12', december: '12', dec: '12',
   }
 
   const strLower = dateStr.toLowerCase().trim()
 
-  // Pattern 1: Cross-month range "31 Juli - 09 Agustus 2026" or "31 Juli s/d 09 Agustus 2026"
+  // Pattern 1: ISO or Slash "2026-08-05" or "05/08/2026"
+  const matchIso = strLower.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/)
+  if (matchIso) {
+    const year = matchIso[1]
+    const month = matchIso[2].padStart(2, '0')
+    const day = matchIso[3].padStart(2, '0')
+    return `${year}-${month}-${day}T12:00:00.000Z`
+  }
+
+  // Pattern 2: Month Day Year "August 5, 2026" or "Aug 5 2026"
+  const matchMonthFirst = strLower.match(/([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})/)
+  if (matchMonthFirst) {
+    const month = months[matchMonthFirst[1]]
+    const day = matchMonthFirst[2].padStart(2, '0')
+    const year = matchMonthFirst[3]
+    if (month && year) return `${year}-${month}-${day}T12:00:00.000Z`
+  }
+
+  // Pattern 3: Cross-month range "31 Juli - 09 Agustus 2026" or "31 Juli s/d 09 Agustus 2026"
   const matchCrossMonth = strLower.match(/\d{1,2}\s+[a-z]+\s*(?:-|s\/d|\ss\/d\s|sampai)\s*(\d{1,2})\s+([a-z]+)\s+(\d{4})/)
   if (matchCrossMonth) {
     const day = matchCrossMonth[1].padStart(2, '0')
@@ -33,7 +60,7 @@ function parseIndonesianDateToIso(dateStr: string): string | null {
     if (month && year) return `${year}-${month}-${day}T12:00:00.000Z`
   }
 
-  // Pattern 2: Same-month range "14 - 31 Juli 2026" or "14 s/d 31 Juli 2026"
+  // Pattern 4: Same-month range "14 - 31 Juli 2026" or "14 s/d 31 Juli 2026"
   const matchSameMonthRange = strLower.match(/\d{1,2}\s*(?:-|s\/d|\ss\/d\s|sampai)\s*(\d{1,2})\s+([a-z]+)\s+(\d{4})/)
   if (matchSameMonthRange) {
     const day = matchSameMonthRange[1].padStart(2, '0')
@@ -42,7 +69,7 @@ function parseIndonesianDateToIso(dateStr: string): string | null {
     if (month && year) return `${year}-${month}-${day}T12:00:00.000Z`
   }
 
-  // Pattern 3: Single date "31 Juli 2026"
+  // Pattern 5: Single date "31 Juli 2026" or "31 Jul 2026"
   const matchSingle = strLower.match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/)
   if (matchSingle) {
     const day = matchSingle[1].padStart(2, '0')
@@ -60,50 +87,64 @@ function computeCompetitionDates(parsedResult: any) {
   let event_start_at: string | null = null
   let event_end_at: string | null = null
 
-  // 1. Direct from AI extracted_deadlines if provided and valid ISO
+  // 1. Direct from AI extracted_deadlines if provided and valid ISO or parseable
   if (parsedResult?.extracted_deadlines) {
     const ex = parsedResult.extracted_deadlines
-    if (ex.registration_deadline_iso && !isNaN(Date.parse(ex.registration_deadline_iso))) {
-      registration_deadline = ex.registration_deadline_iso
+    if (ex.registration_deadline_iso) {
+      registration_deadline = parseIndonesianDateToIso(ex.registration_deadline_iso) || (!isNaN(Date.parse(ex.registration_deadline_iso)) ? ex.registration_deadline_iso : null)
     }
-    if (ex.submission_deadline_iso && !isNaN(Date.parse(ex.submission_deadline_iso))) {
-      submission_deadline = ex.submission_deadline_iso
+    if (ex.submission_deadline_iso) {
+      submission_deadline = parseIndonesianDateToIso(ex.submission_deadline_iso) || (!isNaN(Date.parse(ex.submission_deadline_iso)) ? ex.submission_deadline_iso : null)
     }
-    if (ex.event_start_at_iso && !isNaN(Date.parse(ex.event_start_at_iso))) {
-      event_start_at = ex.event_start_at_iso
+    if (ex.event_start_at_iso) {
+      event_start_at = parseIndonesianDateToIso(ex.event_start_at_iso) || (!isNaN(Date.parse(ex.event_start_at_iso)) ? ex.event_start_at_iso : null)
     }
-    if (ex.event_end_at_iso && !isNaN(Date.parse(ex.event_end_at_iso))) {
-      event_end_at = ex.event_end_at_iso
+    if (ex.event_end_at_iso) {
+      event_end_at = parseIndonesianDateToIso(ex.event_end_at_iso) || (!isNaN(Date.parse(ex.event_end_at_iso)) ? ex.event_end_at_iso : null)
     }
   }
 
-  // 2. Fallback parse from rundown_timeline items
-  const timeline: Array<{ title: string; iso_date?: string; date_str?: string }> = parsedResult?.rundown_timeline || []
+  // 2. Parse from important_dates array if any dates missing
+  const importantDates: string[] = parsedResult?.important_dates || []
+  for (const dateEntry of importantDates) {
+    const iso = parseIndonesianDateToIso(dateEntry)
+    if (iso) {
+      const lower = dateEntry.toLowerCase()
+      if (!registration_deadline && /pendaftaran|registrasi|registration|wave|gelombang|batch/i.test(lower)) {
+        registration_deadline = iso
+      } else if (!submission_deadline && /pengumpulan|submission|submit|unggah|upload|berkas|proposal|karya|project/i.test(lower)) {
+        submission_deadline = iso
+      } else if (!event_start_at && /mulai|start|opening|pembukaan/i.test(lower)) {
+        event_start_at = iso
+      } else if (!event_end_at && /selesai|end|closing|penutupan|awarding|pemenang/i.test(lower)) {
+        event_end_at = iso
+      }
+    }
+  }
+
+  // 3. Fallback parse from rundown_timeline items
+  const timeline: Array<{ title: string; iso_date?: string; date_str?: string; description?: string }> = parsedResult?.rundown_timeline || []
   const validItems = timeline
     .map((item) => {
       let iso: string | undefined = item.iso_date
       if (!iso || isNaN(Date.parse(iso))) {
-        iso = parseIndonesianDateToIso(item.date_str || '') || parseIndonesianDateToIso(item.title || '') || undefined
+        iso = parseIndonesianDateToIso(item.date_str || '') || parseIndonesianDateToIso(item.title || '') || parseIndonesianDateToIso(item.description || '') || undefined
       }
       return { title: (item.title || '').toLowerCase(), iso }
     })
     .filter((x): x is { title: string; iso: string } => Boolean(x.iso && !isNaN(Date.parse(x.iso))))
 
   if (validItems.length > 0) {
-    // Sort items chronologically
     validItems.sort((a, b) => new Date(a.iso).getTime() - new Date(b.iso).getTime())
 
-    // Event Start: earliest item date
     if (!event_start_at) {
       event_start_at = validItems[0].iso
     }
 
-    // Event End: latest item date (Awarding/Closing)
     if (!event_end_at) {
       event_end_at = validItems[validItems.length - 1].iso
     }
 
-    // Registration Deadline: last item matching registration keywords
     if (!registration_deadline) {
       const regItems = validItems.filter((x) =>
         /pendaftaran|registrasi|registration|wave|gelombang|batch|tahap pendaftaran/i.test(x.title)
@@ -115,7 +156,6 @@ function computeCompetitionDates(parsedResult: any) {
       }
     }
 
-    // Submission Deadline: last item matching submission keywords
     if (!submission_deadline) {
       const subItems = validItems.filter((x) =>
         /pengumpulan|submission|submit|unggah|upload|berkas|proposal|karya|project|bapp/i.test(x.title)
@@ -130,6 +170,7 @@ function computeCompetitionDates(parsedResult: any) {
 
   return { registration_deadline, submission_deadline, event_start_at, event_end_at }
 }
+
 
 export async function POST(req: Request) {
   const startTime = Date.now()

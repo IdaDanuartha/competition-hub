@@ -3,7 +3,6 @@ export type CalendarCategory =
   | 'submission_deadline'
   | 'event_start_at'
   | 'event_end_at'
-  | 'guidebook'
   | 'manual'
 
 export const ALL_CALENDAR_CATEGORIES: CalendarCategory[] = [
@@ -11,7 +10,6 @@ export const ALL_CALENDAR_CATEGORIES: CalendarCategory[] = [
   'submission_deadline',
   'event_start_at',
   'event_end_at',
-  'guidebook',
   'manual',
 ]
 
@@ -20,14 +18,11 @@ const KNOWN_SOURCES: Record<string, CalendarCategory> = {
   submission_deadline: 'submission_deadline',
   event_start_at: 'event_start_at',
   event_end_at: 'event_end_at',
-  guidebook: 'guidebook',
 }
 
 export function getCalendarCategory(autoSource: string | null): CalendarCategory {
   if (!autoSource) return 'manual'
-  if (KNOWN_SOURCES[autoSource]) return KNOWN_SOURCES[autoSource]
-  if (autoSource.startsWith('guidebook')) return 'guidebook'
-  return 'manual'
+  return KNOWN_SOURCES[autoSource] ?? 'manual'
 }
 
 const COLOR_CLASSES: Record<CalendarCategory, { dot: string; badgeBg: string; badgeText: string }> = {
@@ -51,11 +46,6 @@ const COLOR_CLASSES: Record<CalendarCategory, { dot: string; badgeBg: string; ba
     badgeBg: 'bg-amber-100 dark:bg-amber-950/80',
     badgeText: 'text-amber-700 dark:text-amber-300',
   },
-  guidebook: {
-    dot: 'bg-indigo-500',
-    badgeBg: 'bg-indigo-100 dark:bg-indigo-950/80',
-    badgeText: 'text-indigo-700 dark:text-indigo-300',
-  },
   manual: {
     dot: 'bg-violet-500',
     badgeBg: 'bg-violet-100 dark:bg-violet-950/80',
@@ -72,11 +62,11 @@ const LABELS: Record<CalendarCategory, string> = {
   submission_deadline: 'Submission deadline',
   event_start_at: 'Event starts',
   event_end_at: 'Event ends',
-  guidebook: 'Guidebook AI',
   manual: 'Manual / custom',
 }
 
 export function getCategoryLabel(category: CalendarCategory): string {
   return LABELS[category]
 }
+
 
